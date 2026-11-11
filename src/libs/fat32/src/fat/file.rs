@@ -4,8 +4,9 @@
 //! FAT file handle implementation.
 //!
 //! Provides a `FatFile` type that wraps a `fatfs::File`, tracks read/write
-//! permissions, and caches the file size. This type is deliberately marked
-//! `!Send + !Sync` to prevent accidental sharing across threads.
+//! permissions, writes the directory entry of the file back on every change,
+//! and caches the file size. This type is deliberately marked `!Send + !Sync`
+//! to prevent accidental sharing across threads.
 
 //==================================================================================================
 // Imports
@@ -79,14 +80,28 @@ macro_rules! dispatch_file {
 ///
 /// Wraps a `fatfs::File` and tracks read/write permissions.
 ///
+/// # Directory Entry
+///
+/// Each `fatfs::File` works on a private copy of the directory entry of the
+/// file, which holds the size of the file and its first cluster, and fatfs
+/// writes this copy back to the filesystem only when the file is flushed or
+/// dropped. Writes and truncations through this handle therefore write it back
+/// right away, so that the data and the size of the file are visible to handles
+/// opened afterwards and to `Fat::stat()` while this handle is still open.
+/// Handles that are already open keep their own copies, and do not see changes
+/// made through other handles.
+///
+/// The copy is written back to where the entry was when the file was opened.
+/// Writing to the file after it is removed or renamed therefore overwrites
+/// whatever is there by then, which fatfs warns can corrupt the filesystem.
+///
 /// # File Size
 ///
 /// fatfs exposes the size of an open file only through seeking, which walks the
 /// cluster chain of the file. This handle therefore queries the size once, the
-/// first time that it is needed, and caches it. Each `fatfs::File` works on a
-/// private copy of the directory entry of the file, so only writes and
-/// truncations through this handle change the size that it sees, and these
-/// keep the cached size up to date.
+/// first time that it is needed, and caches it. Only writes and truncations
+/// through this handle change the size that it sees, and these keep the cached
+/// size up to date.
 ///
 /// # Thread Safety
 ///
@@ -203,6 +218,9 @@ impl<'a> FatFile<'a> {
 
     /// Writes data to the file.
     ///
+    /// Writes the directory entry of the file back to the filesystem, so that
+    /// the data is visible to handles opened afterwards.
+    ///
     /// # Parameters
     ///
     /// - `buf`: The data to write.
@@ -228,7 +246,7 @@ impl<'a> FatFile<'a> {
             Some(len) if result.is_ok() => self.position().ok().map(|end| end.max(len)),
             _ => None,
         };
-        result
+        self.write_back(result)
     }
 
     /// Seeks to a position in the file.
@@ -259,6 +277,9 @@ impl<'a> FatFile<'a> {
 
     /// Truncates the file at the current position.
     ///
+    /// Writes the directory entry of the file back to the filesystem, so that
+    /// the truncation is visible to handles opened afterwards.
+    ///
     /// # Errors
     ///
     /// - [`Fat32Error::ReadOnly`] if file is not open for writing.
@@ -276,7 +297,31 @@ impl<'a> FatFile<'a> {
         } else {
             None
         };
-        result
+        self.write_back(result)
+    }
+
+    /// Writes the directory entry of the file back to the filesystem after an
+    /// operation that may have changed it.
+    ///
+    /// # Parameters
+    ///
+    /// - `result`: The result of the operation.
+    ///
+    /// # Returns
+    ///
+    /// The result of the operation, or an error if it succeeded but writing the
+    /// directory entry back failed.
+    ///
+    /// # Errors
+    ///
+    /// - [`Fat32Error::IoError`] if writing the directory entry back fails.
+    fn write_back<T>(&mut self, result: Result<T, Fat32Error>) -> Result<T, Fat32Error> {
+        // Write the entry back even if the operation failed, because fatfs may change the entry
+        // before failing, for example when it allocates the first cluster of the file.
+        let flushed: Result<(), Fat32Error> = self.flush();
+        let value: T = result?;
+        flushed?;
+        Ok(value)
     }
 
     /// Returns the current position in the file.
