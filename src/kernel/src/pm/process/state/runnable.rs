@@ -12,7 +12,7 @@ use crate::{
         clock,
         process::{
             state::{
-                interrupted::interrupt,
+                interrupted::fold_killed,
                 signal::SignalControl,
                 InterruptedProcess,
                 ProcessState,
@@ -245,6 +245,9 @@ impl RunnableProcess {
     /// Terminates every ready thread and marks sleeping or interrupted threads for termination.
     /// Each immediate live-to-zombie transition is reported through `on_thread_termination`.
     ///
+    /// Interrupted threads are marked for termination whatever they were interrupted for, so that
+    /// none of them returns to user code once resumed (see [`fold_killed`]).
+    ///
     /// # Parameters
     ///
     /// - `on_thread_termination`: Callback that commits each pending thread-termination record.
@@ -282,18 +285,9 @@ impl RunnableProcess {
             None => more_zombie_threads,
         };
 
-        // Collect interrupted threads.
-        let mut interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>> =
-            self.interrupted_threads.take();
-
-        // Terminate all sleeping threads.
-        if let Some(sleeping_threads) = self.sleeping_threads.take() {
-            let more_interrupted_threads = NonEmptyVecDeque::map(sleeping_threads, interrupt);
-            match interrupted_threads.as_mut() {
-                None => interrupted_threads = Some(more_interrupted_threads),
-                Some(interrupted_threads) => interrupted_threads.append(more_interrupted_threads),
-            }
-        }
+        // Mark all interrupted and sleeping threads for termination.
+        let interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>> =
+            fold_killed(self.interrupted_threads.take(), self.sleeping_threads.take());
 
         if let Some(interrupted_threads) = interrupted_threads {
             Ok(InterruptedProcess::new(self.state, interrupted_threads, Some(zombie_threads)))
