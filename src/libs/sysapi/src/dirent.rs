@@ -17,8 +17,10 @@ use crate::{
         c_uchar,
     },
     limits::NAME_MAX,
+    sys_stat::file_type,
     sys_types::{
         ino_t,
+        mode_t,
         reclen_t,
     },
 };
@@ -28,6 +30,9 @@ use ::core::fmt;
 /// # Description
 ///
 /// File types for `d_type` field in `posix_dent` structure.
+///
+/// Each file type, except for `DT_UNKNOWN`, is the file-type code of the matching `S_IF*` file
+/// mode, that is, the value of the `S_IFMT` bits of that file mode.
 ///
 pub mod dirent_file_type {
     use crate::ffi::c_uchar;
@@ -49,14 +54,32 @@ pub mod dirent_file_type {
     /// Socket.
     pub const DT_SOCK: c_uchar = 12;
     /// Message queue.
-    pub const DT_MQ: c_uchar = 13;
+    pub const DT_MQ: c_uchar = 3;
     /// Semaphore.
-    pub const DT_SEM: c_uchar = 14;
+    pub const DT_SEM: c_uchar = 5;
     /// Shared memory object.
-    pub const DT_SHM: c_uchar = 15;
+    pub const DT_SHM: c_uchar = 7;
     /// Typed memory object.
-    pub const DT_TMO: c_uchar = 16; // FIXME: https://github.com/nanvix/nanvix/issues/568
+    pub const DT_TMO: c_uchar = 9;
 }
+
+/// Returns the file-type code of a file mode, that is, the value of its `S_IFMT` bits.
+const fn file_type_code(mode: mode_t) -> c_uchar {
+    ((mode & file_type::S_IFMT) >> file_type::S_IFMT.trailing_zeros()) as c_uchar
+}
+
+// Each file type is the file-type code of the matching file mode.
+::static_assert::assert_eq!(dirent_file_type::DT_FIFO == file_type_code(file_type::S_IFIFO));
+::static_assert::assert_eq!(dirent_file_type::DT_CHR == file_type_code(file_type::S_IFCHR));
+::static_assert::assert_eq!(dirent_file_type::DT_DIR == file_type_code(file_type::S_IFDIR));
+::static_assert::assert_eq!(dirent_file_type::DT_BLK == file_type_code(file_type::S_IFBLK));
+::static_assert::assert_eq!(dirent_file_type::DT_REG == file_type_code(file_type::S_IFREG));
+::static_assert::assert_eq!(dirent_file_type::DT_LNK == file_type_code(file_type::S_IFLNK));
+::static_assert::assert_eq!(dirent_file_type::DT_SOCK == file_type_code(file_type::S_IFSOCK));
+::static_assert::assert_eq!(dirent_file_type::DT_MQ == file_type_code(file_type::S_IFMQ));
+::static_assert::assert_eq!(dirent_file_type::DT_SEM == file_type_code(file_type::S_IFSEM));
+::static_assert::assert_eq!(dirent_file_type::DT_SHM == file_type_code(file_type::S_IFSHM));
+::static_assert::assert_eq!(dirent_file_type::DT_TMO == file_type_code(file_type::S_IFTMO));
 
 //==================================================================================================
 // Structures
