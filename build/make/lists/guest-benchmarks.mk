@@ -7,5 +7,6 @@ ALL_GUEST_BENCHMARKS := \
 	noop-rust-nostd \
 	snapshot-rust-nostd \
 	socket-echo-rust-nostd \
+	syscall-bench-nostd \
 	vfs-bench-nostd \
 	mount-bench-nostd

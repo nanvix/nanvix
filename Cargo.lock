@@ -3101,6 +3101,20 @@ name = "syscall-bench-common"
 version = "0.24.127"
 
 [[package]]
+name = "syscall-bench-nostd"
+version = "0.24.127"
+dependencies = [
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syscall-bench-common",
+]
+
+[[package]]
 name = "syscomm"
 version = "0.24.127"
 dependencies = [
