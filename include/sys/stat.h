@@ -46,6 +46,10 @@ extern "C" {
 #define S_IFREG 0100000 /**< Regular file. */
 #define S_IFLNK 0120000 /**< Symbolic link. */
 #define S_IFSOCK 0140000 /**< Socket. */
+#define S_IFMQ 0030000 /**< Message queue. */
+#define S_IFSEM 0050000 /**< Semaphore. */
+#define S_IFSHM 0070000 /**< Shared memory object. */
+#define S_IFTMO 0110000 /**< Typed memory object. */
 #define S_ISUID 04000 /**< Set-user-ID on execution. */
 #define S_ISGID 02000 /**< Set-group-ID on execution. */
 #define S_ISVTX 01000 /**< Sticky bit. */
@@ -88,6 +92,12 @@ struct stat {
 #define S_ISREG(m)  (((m) & S_IFMT) == S_IFREG)
 #define S_ISLNK(m)  (((m) & S_IFMT) == S_IFLNK)
 #define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)
+
+/* Special file-type test macros, which take a pointer to a struct stat. */
+#define S_TYPEISMQ(buf)  (((buf)->st_mode & S_IFMT) == S_IFMQ)
+#define S_TYPEISSEM(buf) (((buf)->st_mode & S_IFMT) == S_IFSEM)
+#define S_TYPEISSHM(buf) (((buf)->st_mode & S_IFMT) == S_IFSHM)
+#define S_TYPEISTMO(buf) (((buf)->st_mode & S_IFMT) == S_IFTMO)
 
 /*==================================================================================================
  * File Status

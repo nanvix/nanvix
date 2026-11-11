@@ -34,6 +34,10 @@ extern "C" {
 #define DT_REG 8 /**< Regular file. */
 #define DT_LNK 10 /**< Symbolic link. */
 #define DT_SOCK 12 /**< Socket. */
+#define DT_MQ 3 /**< Message queue. */
+#define DT_SEM 5 /**< Semaphore. */
+#define DT_SHM 7 /**< Shared memory object. */
+#define DT_TMO 9 /**< Typed memory object. */
 
 /*==================================================================================================
  * Types

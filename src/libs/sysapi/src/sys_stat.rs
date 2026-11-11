@@ -63,6 +63,15 @@ pub mod file_mode {
     pub const S_ISVTX: mode_t = 0o1000;
 }
 
+///
+/// # Description
+///
+/// File types encoded in the `S_IFMT` bits of a file mode.
+///
+/// Message queues, semaphores, shared memory objects, and typed memory objects are distinct file
+/// types. Each one takes a file-type code that the standard file types leave unused, so that every
+/// file type has a distinct value in the `S_IFMT` bits.
+///
 pub mod file_type {
     use crate::sys_types::mode_t;
 
@@ -83,6 +92,14 @@ pub mod file_type {
     pub const S_IFLNK: mode_t = 0o0120000;
     /// Socket.
     pub const S_IFSOCK: mode_t = 0o0140000;
+    /// Message queue.
+    pub const S_IFMQ: mode_t = 0o0030000;
+    /// Semaphore.
+    pub const S_IFSEM: mode_t = 0o0050000;
+    /// Shared memory object.
+    pub const S_IFSHM: mode_t = 0o0070000;
+    /// Typed memory object.
+    pub const S_IFTMO: mode_t = 0o0110000;
 
     /// Tests if the file type is a FIFO.
     pub fn S_ISFIFO(mode: mode_t) -> bool {
@@ -120,27 +137,23 @@ pub mod file_type {
     }
 
     /// Tests if the file type is a message queue.
-    pub fn S_TYPEISMQ(_mode: mode_t) -> bool {
-        // TODO: https://github.com/nanvix/nanvix/issues/568
-        false
+    pub fn S_TYPEISMQ(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFMQ
     }
 
     /// Tests if the file type is a semaphore.
-    pub fn S_TYPEISSEM(_mode: mode_t) -> bool {
-        // TODO: https://github.com/nanvix/nanvix/issues/568
-        false
+    pub fn S_TYPEISSEM(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFSEM
     }
 
     /// Tests if the file type is a shared memory object.
-    pub fn S_TYPEISSHM(_mode: mode_t) -> bool {
-        // TODO: https://github.com/nanvix/nanvix/issues/568
-        false
+    pub fn S_TYPEISSHM(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFSHM
     }
 
     /// Tests if the file type is a typed memory object.
-    pub fn S_TYPEISTMO(_mode: mode_t) -> bool {
-        // TODO: https://github.com/nanvix/nanvix/issues/568
-        false
+    pub fn S_TYPEISTMO(mode: mode_t) -> bool {
+        (mode & S_IFMT) == S_IFTMO
     }
 }
 
@@ -457,3 +470,10 @@ impl stat {
         })
     }
 }
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests;

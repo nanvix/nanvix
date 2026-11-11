@@ -138,6 +138,9 @@ extern void test_stat(void);
 // Tests whether hostfs reports a consistent identity through stat(), lstat(), and fstat().
 extern void test_hostfs_stat_identity(void);
 
+// Tests whether the special file-type test macros tell file types apart.
+extern void test_special_file_types(void);
+
 extern void test_terminal_devices(void);
 
 // Tests whether we can create a symbolic link to a file.

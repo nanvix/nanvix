@@ -48,6 +48,22 @@ comment = "Symbolic link."
 path = "dirent::dirent_file_type::DT_SOCK"
 comment = "Socket."
 
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_MQ"
+comment = "Message queue."
+
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_SEM"
+comment = "Semaphore."
+
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_SHM"
+comment = "Shared memory object."
+
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_TMO"
+comment = "Typed memory object."
+
 [[rust_types]]
 path = "dirent::dirent"
 style = "tag"
