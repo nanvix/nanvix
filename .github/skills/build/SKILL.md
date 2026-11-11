@@ -216,7 +216,18 @@ ln -s ../scripts/setup/vscode/settings-linux.json settings.json
 ```powershell
 New-Item -ItemType Directory -Path .vscode -Force
 Copy-Item scripts\setup\vscode\settings-windows.json .vscode\settings.json
+Copy-Item scripts\setup\vscode\tasks-windows.json .vscode\tasks.json
+Copy-Item scripts\setup\vscode\launch-windows.json .vscode\launch.json
+Copy-Item scripts\setup\vscode\extensions-windows.json .vscode\extensions.json
 ```
+
+The Windows tasks run `z.ps1` (`build -- all`, `build -- all-uservm`, `build -- all-nanvixd`,
+`run`, `test`, `build -- run-unit-tests`, `build -- run-nanvix-tests`). The launch configurations
+debug `bin\uservm.exe` and `bin\nanvixd.exe` with `cppvsdbg` from the C/C++ extension, because
+these MSVC binaries carry PDB debug information. The executables embed only the PDB file name, so
+`uservm.mk` and `nanvixd.mk` copy each PDB next to its executable in `bin\`. The `preLaunchTask`
+values must match the task labels in `tasks-windows.json`. See `doc/setup-windows.md`, "Visual
+Studio Code".
 
 > **Note:** The `check` target in `z.ps1` only checks host crates natively. Guest and kernel
 > crates require the cross-compilation toolchain. Run

@@ -1,0 +1,161 @@
+// Visual Studio Code Tasks for Nanvix Development on Windows
+//
+// How to use:
+// 1. Create a folder named '.vscode' in the root of your Nanvix workspace.
+// 2. Copy this file into the '.vscode' folder as 'tasks.json'.
+// 3. Run tasks with 'Terminal > Run Task...'. 'Ctrl+Shift+B' runs the default build task
+//    ('Build: all'), and 'Tasks: Run Test Task' runs the default test task ('Test: all').
+//
+// Notes:
+// - Tasks run 'z.ps1' in Windows PowerShell, regardless of the default terminal profile.
+// - Tasks use the default build parameters (debug build). To change them, append parameters such
+//   as 'RELEASE=yes' or 'LOG_LEVEL=debug' to the 'args' of a 'z.ps1 build' or 'z.ps1 test' task.
+// - 'Run: guest program' does not build anything. Run 'Build: all' first.
+// - The debug configurations in 'launch-windows.json' run 'Build: uservm' and 'Build: nanvixd'
+//   before each debug session. Do not rename these tasks.
+{
+    "version": "2.0.0",
+    "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+            "executable": "powershell.exe",
+            "args": [
+                "-ExecutionPolicy",
+                "Bypass",
+                "-NoProfile",
+                "-Command"
+            ]
+        }
+    },
+    "tasks": [
+        //==========================================================================================
+        // Build Tasks
+        //==========================================================================================
+        {
+            "label": "Build: all",
+            "detail": "z.ps1 build -- all",
+            "type": "shell",
+            "command": ".\\z.ps1",
+            "args": [
+                "build",
+                "--",
+                "all"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$rustc"
+            ]
+        },
+        {
+            "label": "Build: uservm",
+            "detail": "z.ps1 build -- all-uservm",
+            "type": "shell",
+            "command": ".\\z.ps1",
+            "args": [
+                "build",
+                "--",
+                "all-uservm"
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$rustc"
+            ]
+        },
+        {
+            "label": "Build: nanvixd",
+            "detail": "z.ps1 build -- all-nanvixd",
+            "type": "shell",
+            "command": ".\\z.ps1",
+            "args": [
+                "build",
+                "--",
+                "all-nanvixd"
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$rustc"
+            ]
+        },
+        //==========================================================================================
+        // Run Tasks
+        //==========================================================================================
+        {
+            "label": "Run: guest program",
+            "detail": "z.ps1 run -- -program <program>",
+            "type": "shell",
+            "command": ".\\z.ps1",
+            "args": [
+                "run",
+                "--",
+                "-program",
+                "${input:guestProgram}"
+            ],
+            "presentation": {
+                "focus": true
+            },
+            "problemMatcher": []
+        },
+        //==========================================================================================
+        // Test Tasks
+        //==========================================================================================
+        {
+            "label": "Test: all",
+            "detail": "z.ps1 test",
+            "type": "shell",
+            "command": ".\\z.ps1",
+            "args": [
+                "test"
+            ],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$rustc",
+                "$rust-panic"
+            ]
+        },
+        {
+            "label": "Test: unit",
+            "detail": "z.ps1 build -- run-unit-tests",
+            "type": "shell",
+            "command": ".\\z.ps1",
+            "args": [
+                "build",
+                "--",
+                "run-unit-tests"
+            ],
+            "group": "test",
+            "problemMatcher": [
+                "$rustc",
+                "$rust-panic"
+            ]
+        },
+        {
+            "label": "Test: integration",
+            "detail": "z.ps1 build -- run-nanvix-tests",
+            "type": "shell",
+            "command": ".\\z.ps1",
+            "args": [
+                "build",
+                "--",
+                "run-nanvix-tests"
+            ],
+            "group": "test",
+            "problemMatcher": [
+                "$rustc"
+            ]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "guestProgram",
+            "type": "promptString",
+            "description": "Guest program to run, relative to the workspace root.",
+            "default": "bin/hello-rust-nostd.elf"
+        }
+    ]
+}

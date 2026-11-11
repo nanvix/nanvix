@@ -146,10 +146,60 @@ Choose one of the following options to set up your IDE for Nanvix development.
 
 ### Visual Studio Code
 
-Use the host-specific settings template below. The Windows template invokes `./z.bat` and routes
-Rust Analyzer build-script discovery through the Windows build workflow.
+Use the host-specific templates below. The settings template invokes `./z.bat` and routes Rust
+Analyzer build-script discovery through the Windows build workflow. The other templates add tasks
+that run `z.ps1`, debug configurations for the UserVM, and a list of recommended extensions.
 
 ```powershell
 New-Item -ItemType Directory -Path .vscode -Force
 Copy-Item scripts\setup\vscode\settings-windows.json .vscode\settings.json
+Copy-Item scripts\setup\vscode\tasks-windows.json .vscode\tasks.json
+Copy-Item scripts\setup\vscode\launch-windows.json .vscode\launch.json
+Copy-Item scripts\setup\vscode\extensions-windows.json .vscode\extensions.json
 ```
+
+Then run **Extensions: Show Recommended Extensions** from the Command Palette and install the
+recommended extensions: Rust Analyzer, C/C++ (which provides the `cppvsdbg` debugger), Even Better
+TOML, PowerShell, Python, and ShellCheck.
+
+#### Tasks
+
+Run tasks with **Terminal > Run Task**. Each task runs `z.ps1` in Windows PowerShell with the
+default build parameters. To change them, append parameters such as `RELEASE=yes` to the `args` of
+the task in `.vscode\tasks.json`.
+
+| Task                 | Command                             |
+| -------------------- | ----------------------------------- |
+| `Build: all`         | `.\z.ps1 build -- all`              |
+| `Build: uservm`      | `.\z.ps1 build -- all-uservm`       |
+| `Build: nanvixd`     | `.\z.ps1 build -- all-nanvixd`      |
+| `Run: guest program` | `.\z.ps1 run -- -program <program>` |
+| `Test: all`          | `.\z.ps1 test`                      |
+| `Test: unit`         | `.\z.ps1 build -- run-unit-tests`   |
+| `Test: integration`  | `.\z.ps1 build -- run-nanvix-tests` |
+
+`Build: all` is the default build task (`Ctrl+Shift+B`), and `Test: all` is the default test task.
+`Run: guest program` prompts for the program to run and does not build anything, so run
+`Build: all` first.
+
+#### Debugging
+
+The launch template debugs the host process with `cppvsdbg`, the native Windows debugger of the
+C/C++ extension. `uservm.exe` and `nanvixd.exe` are built with the MSVC toolchain and carry PDB
+debug information, which CodeLLDB supports only partially. Before you debug, build Nanvix once with
+the `Build: all` task, so that `bin\` holds the kernel and the guest programs.
+
+| Configuration                 | Debugs                                                    |
+| ----------------------------- | --------------------------------------------------------- |
+| `Debug UserVM (uservm.exe)`   | `bin\uservm.exe -kernel bin\kernel.elf -initrd <program>` |
+| `Debug nanvixd (nanvixd.exe)` | `bin\nanvixd.exe -- <program>`                            |
+
+Both configurations prompt for the guest program (`bin/hello-rust-nostd.elf` by default) and rebuild
+the binary that they debug before they start. `nanvixd.exe` runs the VM in its own process through
+the UserVM library, so breakpoints in that library are hit in both configurations. Code in
+`src\uservm\src\main.rs` only runs in `uservm.exe`.
+
+Debug information is only available in debug builds, the default. Release builds (`RELEASE=yes`)
+are stripped. Debug builds are optimized as well (`opt-level = 3` in the `dev` profile of
+`Cargo.toml`), so some lines have no code that a breakpoint can bind to, and some variables are
+optimized out.
