@@ -261,11 +261,17 @@ impl Orchestrator {
     ///
     /// Runs the main orchestrator loop.
     ///
+    /// If handling a message fails, for instance because the MicroVM fails to pause or resume, the
+    /// orchestrator shuts the MicroVM down and cleans up, as it does when asked to shut down, rather
+    /// than leave the MicroVM without an orchestrator. It then returns the error.
+    ///
     /// # Returns
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     async fn run(&mut self) -> Result<()> {
+        // Failure that made the orchestrator shut down the MicroVM, if any.
+        let mut failure: Option<anyhow::Error> = None;
         loop {
             // If we're in shutting down state, add timeout to prevent indefinite hang.
             if self.state == State::ShuttingDown {
@@ -288,16 +294,11 @@ impl Orchestrator {
                 }
             }
 
-            select! {
+            let outcome: Result<ControlFlow<()>> = select! {
                 // Only poll the I/O control channel when I/O is enabled; otherwise skip this branch.
                 result = self.io_control_rx.recv() => {
                     match result {
-                        Some(command) => {
-                            match self.handle_io_control_command(command).await? {
-                                Continue(()) => continue,
-                                Break(()) => break,
-                            }
-                        },
+                        Some(command) => self.handle_io_control_command(command).await,
                         None => {
                             let reason: String =
                                 "disconnected from the input control command channel".to_string();
@@ -310,11 +311,7 @@ impl Orchestrator {
                 result = self.vcpu_control_rx.recv() => {
                     match result {
                         Some(control_response) => {
-                            match self.try_receive_from_vcpu(control_response).await? {
-                                Continue(()) => continue,
-                                Break(()) => break,
-
-                            }
+                            self.try_receive_from_vcpu(control_response).await
                         },
                         None => {
                             let reason: String =
@@ -323,6 +320,16 @@ impl Orchestrator {
                             break
                         },
                     }
+                },
+            };
+
+            match outcome {
+                Ok(Continue(())) => continue,
+                Ok(Break(())) => break,
+                Err(error) => {
+                    error!("run(): shutting down the MicroVM after a failure: {error:?}");
+                    self.start_shutdown().await;
+                    failure = Some(error);
                 },
             }
         }
@@ -336,7 +343,10 @@ impl Orchestrator {
 
         self.io_control_tx.send(IoControlResponse::Shutdown).await?;
 
-        Ok(())
+        match failure {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 
     ///
