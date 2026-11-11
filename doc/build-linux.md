@@ -42,16 +42,16 @@ To build Nanvix with default build parameters, run:
 
 ```bash
 # Build only the kernel.
-./z build -- kernel
+./z build -- all-kernel
 
-# Build only nanvixd.
-./z build -- nanvixd
+# Build nanvixd. This also builds mkramfs and the guest binaries.
+./z build -- all-nanvixd
 
 # Build only the UserVM.
-./z build -- uservm
+./z build -- all-uservm
 
-# Build only guest components.
-./z build -- guest
+# Build only guest components (the kernel, libraries, and binaries).
+./z build -- all-kernel all-guest-binaries
 ```
 
 ## Build Parameters
@@ -73,12 +73,14 @@ Available build parameters:
 
 | Parameter   | Default   | Values                                             |
 | ----------- | --------- | -------------------------------------------------- |
-| `LOG_LEVEL` | `error`   | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
+| `LOG_LEVEL` | `trace`   | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
 | `MACHINE`   | `microvm` | `microvm`                                          |
 | `PROFILER`  | `no`      | `yes`, `no`                                        |
 | `RELEASE`   | `no`      | `yes`, `no`                                        |
-| `TARGET`    | `x86`     | `x86`                                              |
+| `TARGET`    | `x86`     | `x86`, `x86_64`                                    |
 | `TIMEOUT`   | `600`     | Execution timeout in seconds                       |
+
+In release builds (`RELEASE=yes`), `LOG_LEVEL` defaults to `error`.
 
 ## Code Quality Checks
 

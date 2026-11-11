@@ -51,7 +51,7 @@ feature flags:
 ## Building the Kernel
 
 ```bash
-./z build -- kernel
+./z build -- all-kernel
 ```
 
 The kernel uses a custom Cargo target

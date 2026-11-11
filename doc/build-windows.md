@@ -36,7 +36,7 @@ For more information on how to use the `z.ps1` utility, you can run:
 
 ### Using `z.ps1` to Build Nanvix
 
-To build Nanvix using with default build parameters, run:
+To build Nanvix with default build parameters, run:
 
 ```powershell
 .\z.ps1 build -- all
@@ -46,19 +46,19 @@ To build Nanvix using with default build parameters, run:
 
 ```powershell
 # Build only the kernel.
-.\z.ps1 build -- kernel
+.\z.ps1 build -- all-kernel
 
-# Build only nanvixd.
-.\z.ps1 build -- nanvixd
+# Build nanvixd. This also builds mkramfs and the guest binaries.
+.\z.ps1 build -- all-nanvixd
 
 # Build only nanvix-bench.
-.\z.ps1 build -- nanvix-bench
+.\z.ps1 build -- all-nanvix-bench
 
 # Build only the UserVM.
-.\z.ps1 build -- uservm
+.\z.ps1 build -- all-uservm
 
-# Build only guest components.
-.\z.ps1 build -- guest
+# Build only guest components (the kernel, libraries, and binaries).
+.\z.ps1 build -- all-kernel all-guest-binaries
 ```
 
 ## Build Parameters
@@ -80,17 +80,19 @@ Available build parameters:
 
 | Parameter        | Default   | Values                                             |
 | ---------------- | --------- | -------------------------------------------------- |
-| `LOG_LEVEL`      | `error`   | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
+| `LOG_LEVEL`      | `trace`   | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
 | `MACHINE`        | `microvm` | `microvm`                                          |
 | `MESSAGE_FORMAT` | (none)    | `json`, `json-diagnostic-rendered-ansi`            |
 | `RELEASE`        | `no`      | `yes`, `no`                                        |
-| `TARGET`         | `x86`     | `x86`                                              |
+| `TARGET`         | `x86`     | `x86`, `x86_64`                                    |
 | `TIMEOUT`        | `600`     | Execution timeout in seconds                       |
+
+In release builds (`RELEASE=yes`), `LOG_LEVEL` defaults to `error`.
 
 ## Code Quality Checks
 
 ```powershell
-# Run cargo check on host crates.
+# Run cargo check on all crates (host, kernel, and guest).
 .\z.ps1 build -- check
 
 # Check formatting.
