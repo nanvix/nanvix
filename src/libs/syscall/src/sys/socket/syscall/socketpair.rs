@@ -13,6 +13,7 @@ use crate::{
             CreateSocketPairResponse,
         },
         AddressFamily,
+        SocketFlags,
         SocketType,
     },
     SystemCallMessage,
@@ -38,7 +39,7 @@ use ::sysapi::ffi::c_int;
 ///
 /// # Description
 ///
-/// Creates a pair of connected sockets.
+/// Creates a pair of connected sockets with no socket creation flags.
 ///
 /// # Parameters
 ///
@@ -57,7 +58,42 @@ pub fn socketpair(
     protocol: Protocol,
     socket_fds: &mut [c_int],
 ) -> Result<(), Error> {
-    ::syslog::trace!("socketpair(): domain={:?}, type={:?}, protocol={:?}", domain, typ, protocol);
+    socketpair_with_flags(domain, typ, protocol, socket_fds, SocketFlags::default())
+}
+
+///
+/// # Description
+///
+/// Creates a pair of connected sockets with socket creation flags. The file descriptors of both
+/// sockets are created with the per-descriptor flags and the open file status flags that `flags`
+/// requests.
+///
+/// # Parameters
+///
+/// - `domain`: Communication domain.
+/// - `typ`: Socket type.
+/// - `protocol`: Protocol.
+/// - `socket_fds`: Array where the file descriptors of the sockets will be stored.
+/// - `flags`: Socket creation flags.
+///
+/// # Returns
+///
+/// The `socketpair_with_flags()` function returns empty on success. On error, it returns an error.
+///
+pub fn socketpair_with_flags(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+    socket_fds: &mut [c_int],
+    flags: SocketFlags,
+) -> Result<(), Error> {
+    ::syslog::trace!(
+        "socketpair(): domain={:?}, type={:?}, protocol={:?}, flags={:?}",
+        domain,
+        typ,
+        protocol,
+        flags
+    );
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
@@ -103,7 +139,7 @@ pub fn socketpair(
                     socket_fds[1] = remote_fd_1;
                     return Ok(());
                 }
-                let fd0: c_int = match super::register_socket_slot(remote_fd_0) {
+                let fd0: c_int = match super::register_socket_slot(remote_fd_0, flags) {
                     Ok(fd0) => fd0,
                     Err(e) => {
                         // The first registration failed and already closed `remote_fd_0`; the
@@ -113,7 +149,7 @@ pub fn socketpair(
                         return Err(e);
                     },
                 };
-                let fd1: c_int = match super::register_socket_slot(remote_fd_1) {
+                let fd1: c_int = match super::register_socket_slot(remote_fd_1, flags) {
                     Ok(fd1) => fd1,
                     Err(e) => {
                         // Roll back the already-registered first slot; closing it releases the

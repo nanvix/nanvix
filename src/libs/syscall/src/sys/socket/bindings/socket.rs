@@ -10,6 +10,7 @@ use crate::{
     netinet::in_::Protocol,
     sys::socket::{
         AddressFamily,
+        SocketFlags,
         SocketType,
     },
 };
@@ -36,7 +37,10 @@ use ::syslog::trace_syscall;
 ///   local communication.
 /// - `typ`: Specifies the socket type, which determines the semantics of communication. Common
 ///   values include `SOCK_STREAM` for reliable, connection-oriented communication, and `SOCK_DGRAM`
-///   for unreliable, connectionless communication.
+///   for unreliable, connectionless communication. The socket type may be combined (bitwise OR)
+///   with socket creation flags: `SOCK_CLOEXEC` sets `FD_CLOEXEC` on the new file descriptor,
+///   `SOCK_CLOFORK` sets `FD_CLOFORK` on it, and `SOCK_NONBLOCK` sets `O_NONBLOCK` on its open file
+///   description.
 /// - `protocol`: Specifies a particular protocol to be used with the socket. Normally, only a
 ///   single protocol exists to support a particular socket type within a given protocol family.
 ///   A value of `0` selects the default protocol for the given domain and type.
@@ -70,9 +74,9 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
         },
     };
 
-    // Attempt to convert socket type.
-    let typ: SocketType = match SocketType::try_from(typ) {
-        Ok(typ) => typ,
+    // Attempt to convert socket type and socket creation flags.
+    let (typ, flags): (SocketType, SocketFlags) = match SocketType::try_from_with_flags(typ) {
+        Ok(typ_and_flags) => typ_and_flags,
         Err(error) => {
             ::syslog::warn!(
                 "socket(): {error:?} (domain={domain:?}, type={typ:?}, protocol={protocol:?})"
@@ -87,7 +91,8 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
         Ok(protocol) => protocol,
         Err(error) => {
             ::syslog::warn!(
-                "socket(): {error:?} (domain={domain:?}, type={typ:?}, protocol={protocol:?})"
+                "socket(): {error:?} (domain={domain:?}, type={typ:?}, flags={flags:?}, \
+                 protocol={protocol:?})"
             );
             *__errno_location() = error.code.get();
             return -1;
@@ -95,11 +100,12 @@ pub unsafe extern "C" fn socket(domain: c_int, typ: c_int, protocol: c_int) -> c
     };
 
     // Create socket and check for errors.
-    match crate::sys::socket::syscall::socket(domain, typ, protocol) {
+    match crate::sys::socket::syscall::socket_with_flags(domain, typ, protocol, flags) {
         Ok(sockfd) => sockfd,
         Err(error) => {
             ::syslog::warn!(
-                "socket(): {error:?} (domain={domain:?}, type={typ:?}, protocol={protocol:?})"
+                "socket(): {error:?} (domain={domain:?}, type={typ:?}, flags={flags:?}, \
+                 protocol={protocol:?})"
             );
             *__errno_location() = error.code.get();
             -1

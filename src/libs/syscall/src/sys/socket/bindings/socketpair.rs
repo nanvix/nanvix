@@ -10,6 +10,7 @@ use crate::{
     netinet::in_::Protocol,
     sys::socket::{
         AddressFamily,
+        SocketFlags,
         SocketType,
     },
     ErrorCode,
@@ -37,7 +38,10 @@ use ::syslog::trace_syscall;
 ///   created. For socket pairs, this is typically `AF_UNIX` for local communication.
 /// - `typ`: Specifies the socket type, which determines the semantics of communication. Common
 ///   values include `SOCK_STREAM` for reliable, connection-oriented communication, and `SOCK_DGRAM`
-///   for unreliable, connectionless communication.
+///   for unreliable, connectionless communication. The socket type may be combined (bitwise OR)
+///   with socket creation flags: `SOCK_CLOEXEC` sets `FD_CLOEXEC` on both new file descriptors,
+///   `SOCK_CLOFORK` sets `FD_CLOFORK` on them, and `SOCK_NONBLOCK` sets `O_NONBLOCK` on their open
+///   file descriptions.
 /// - `protocol`: Specifies a particular protocol to be used with the sockets. Normally, only a
 ///   single protocol exists to support a particular socket type within a given protocol family.
 ///   A value of `0` selects the default protocol for the given domain and type.
@@ -101,9 +105,9 @@ pub unsafe extern "C" fn socketpair(
         },
     };
 
-    // Attempt to convert socket type.
-    let typ: SocketType = match typ.try_into() {
-        Ok(typ) => typ,
+    // Attempt to convert socket type and socket creation flags.
+    let (typ, flags): (SocketType, SocketFlags) = match SocketType::try_from_with_flags(typ) {
+        Ok(typ_and_flags) => typ_and_flags,
         Err(error) => {
             ::syslog::warn!(
                 "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, protocol={protocol:?}, \
@@ -119,8 +123,8 @@ pub unsafe extern "C" fn socketpair(
         Ok(protocol) => protocol,
         Err(error) => {
             ::syslog::warn!(
-                "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, protocol={protocol:?}, \
-                 socket_fds={socket_fds:?})"
+                "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, flags={flags:?}, \
+                 protocol={protocol:?}, socket_fds={socket_fds:?})"
             );
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
@@ -128,12 +132,14 @@ pub unsafe extern "C" fn socketpair(
     };
 
     // Create socket pair and check for errors.
-    match crate::sys::socket::syscall::socketpair(domain, typ, protocol, socket_fds) {
+    match crate::sys::socket::syscall::socketpair_with_flags(
+        domain, typ, protocol, socket_fds, flags,
+    ) {
         Ok(()) => 0,
         Err(error) => {
             ::syslog::warn!(
-                "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, protocol={protocol:?}, \
-                 socket_fds={socket_fds:?})"
+                "socketpair(): {error:?} (domain={domain:?}, typ={typ:?}, flags={flags:?}, \
+                 protocol={protocol:?}, socket_fds={socket_fds:?})"
             );
             *__errno_location() = error.code.get();
             -1

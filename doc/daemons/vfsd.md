@@ -413,6 +413,12 @@ Socket creation and data I/O remain `networkd` operations. Once a socket endpoin
 `RegisterSocketRequest` adds its backend descriptor to `vfsd`'s flat descriptor table so generic
 operations such as `dup2`, fork, exec, and close have consistent lifetime semantics.
 
+The request also carries the per-descriptor flags (`FD_CLOEXEC` and `FD_CLOFORK`) and the open file
+status flags (`O_NONBLOCK`) of the new descriptor, which libposix derives from the `SOCK_CLOEXEC`,
+`SOCK_CLOFORK`, and `SOCK_NONBLOCK` flags of `socket()` and `socketpair()`. `vfsd` creates the slot
+with these flags in place, so no fork or exec can observe the descriptor without them. It rejects
+unknown flags with `EINVAL`.
+
 `vfsd` also answers `fstat` for a socket descriptor from its slot. It reports `S_IFSOCK` with no
 size or blocks on a synthetic socket device, and the registration time for all three timestamps.
 The inode number is allocated at registration and never recycled, rather than taken from the
