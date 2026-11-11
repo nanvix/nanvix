@@ -198,11 +198,15 @@ impl Fat {
         dispatch_fs!(self, |fs| {
             let root = fs.root_dir();
 
+            // fatfs writes the directory entry of a file back only when the file is flushed or
+            // dropped. Write a truncation back right away, like `FatFile::truncate()` does, so
+            // that it is visible before anything is written to the truncated file.
             if create {
                 match root.open_file(path) {
                     Ok(mut file) => {
                         if truncate {
                             file.truncate().map_err(map_fatfs_error)?;
+                            Write::flush(&mut file).map_err(map_fatfs_error)?;
                         }
                         Ok(FatFile::new(file.into_file_inner(), read, write))
                     },
@@ -216,6 +220,7 @@ impl Fat {
                 let mut file = root.open_file(path).map_err(map_fatfs_error)?;
                 if truncate && write {
                     file.truncate().map_err(map_fatfs_error)?;
+                    Write::flush(&mut file).map_err(map_fatfs_error)?;
                 }
                 Ok(FatFile::new(file.into_file_inner(), read, write))
             }

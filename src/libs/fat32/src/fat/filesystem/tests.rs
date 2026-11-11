@@ -303,6 +303,194 @@ fn file_len_keeps_position() {
     assert_eq!(read, data, "reads should return the file contents in order");
 }
 
+// -- write visibility tests --------------------------------------------------
+
+/// Helper: writes all of `data` to a file, looping on short writes.
+fn write_all(file: &mut FatFile<'_>, data: &[u8]) {
+    let mut written: usize = 0;
+    while written < data.len() {
+        let n: usize = file.write(&data[written..]).expect("write should succeed");
+        assert!(n > 0, "write should make progress");
+        written += n;
+    }
+}
+
+/// Helper: reads a file from its current position to its end.
+fn read_to_end(file: &mut FatFile<'_>) -> Vec<u8> {
+    let mut data: Vec<u8> = Vec::new();
+    let mut buf: [u8; 512] = [0u8; 512];
+    loop {
+        let n: usize = file.read(&mut buf).expect("read should succeed");
+        if n == 0 {
+            return data;
+        }
+        data.extend_from_slice(&buf[..n]);
+    }
+}
+
+/// Tests that data written through a file is visible to a handle opened afterwards, while the
+/// writer is still open.
+#[test]
+fn writes_visible_to_new_handles() {
+    // Spans several clusters, and does not end at a cluster boundary.
+    const FILE_SIZE: usize = 4 * 1024 + 7;
+
+    let fat: FatHandle = FatHandle::new();
+    let data: Vec<u8> = (0..FILE_SIZE).map(|i| (i % 251) as u8).collect();
+    let mut writer: FatFile<'_> = fat
+        .create_new(&test_path("shared.bin"), false, true)
+        .expect("create should succeed");
+    write_all(&mut writer, &data);
+
+    let mut reader: FatFile<'_> = fat
+        .open(&test_path("shared.bin"), true, false, false, false)
+        .expect("open for read should succeed");
+    assert_eq!(
+        reader.len().expect("len should succeed"),
+        FILE_SIZE as u64,
+        "reader should see the size of the written data"
+    );
+    assert_eq!(read_to_end(&mut reader), data, "reader should see the written data");
+}
+
+/// Tests that the size of a file that is open for writing is visible to `stat()`.
+#[test]
+fn writes_visible_to_stat() {
+    let fat: FatHandle = FatHandle::new();
+    let mut writer: FatFile<'_> = fat
+        .create_new(&test_path("growing.txt"), false, true)
+        .expect("create should succeed");
+
+    writer.write(b"12345").expect("write should succeed");
+    let info: FatStat = fat
+        .stat(&test_path("growing.txt"))
+        .expect("stat should succeed");
+    assert_eq!(info.size, 5, "stat should see the first write");
+
+    writer.write(b"678").expect("write should succeed");
+    let info: FatStat = fat
+        .stat(&test_path("growing.txt"))
+        .expect("stat should succeed");
+    assert_eq!(info.size, 8, "stat should see the append");
+}
+
+/// Tests that a file that is open for writing can be read in place.
+#[test]
+fn writes_visible_to_raw_region() {
+    let fat: FatHandle = FatHandle::new();
+    let data: &[u8] = b"raw region data";
+    let mut writer: FatFile<'_> = fat
+        .create_new(&test_path("raw.txt"), false, true)
+        .expect("create should succeed");
+    writer.write(data).expect("write should succeed");
+
+    let (ptr, size): (*const u8, usize) = fat
+        .file_raw_region(&test_path("raw.txt"))
+        .expect("a file within one cluster should be contiguous");
+    assert_eq!(size, data.len(), "raw region size should match the written data");
+    let slice: &[u8] = unsafe { core::slice::from_raw_parts(ptr, size) };
+    assert_eq!(slice, data, "raw region data should match the written data");
+}
+
+/// Tests that truncating a file when opening it is visible to a handle opened afterwards, before
+/// anything is written to the truncated file.
+#[test]
+fn open_truncation_visible_to_new_handles() {
+    let fat: FatHandle = FatHandle::new();
+    for create in [false, true] {
+        {
+            let mut file: FatFile<'_> = fat
+                .open(&test_path("reset.txt"), false, true, true, false)
+                .expect("create should succeed");
+            file.write(b"initial content")
+                .expect("write should succeed");
+        }
+
+        let _truncated: FatFile<'_> = fat
+            .open(&test_path("reset.txt"), false, true, create, true)
+            .expect("open with truncate should succeed");
+        let info: FatStat = fat
+            .stat(&test_path("reset.txt"))
+            .expect("stat should succeed");
+        assert_eq!(info.size, 0, "stat should see the truncation (create: {create})");
+        let mut reader: FatFile<'_> = fat
+            .open(&test_path("reset.txt"), true, false, false, false)
+            .expect("open for read should succeed");
+        assert_eq!(
+            read_to_end(&mut reader),
+            b"",
+            "reader should see an empty file (create: {create})"
+        );
+    }
+}
+
+/// Tests that truncating a file through a handle is visible to handles opened afterwards.
+#[test]
+fn truncation_visible_to_new_handles() {
+    let fat: FatHandle = FatHandle::new();
+    {
+        let mut file: FatFile<'_> = fat
+            .create_new(&test_path("shrink.txt"), false, true)
+            .expect("create should succeed");
+        file.write(b"hello world").expect("write should succeed");
+    }
+
+    let mut writer: FatFile<'_> = fat
+        .open(&test_path("shrink.txt"), false, true, false, false)
+        .expect("open for write should succeed");
+    let expectations: [(u64, &[u8]); 2] = [(5, b"hello"), (0, b"")];
+    for (position, expected) in expectations {
+        writer
+            .seek(::fatfs::SeekFrom::Start(position))
+            .expect("seek should succeed");
+        writer.truncate().expect("truncate should succeed");
+        let mut reader: FatFile<'_> = fat
+            .open(&test_path("shrink.txt"), true, false, false, false)
+            .expect("open for read should succeed");
+        assert_eq!(read_to_end(&mut reader), expected, "reader should see the truncation");
+    }
+
+    // Writing to the emptied file allocates its first cluster again.
+    writer.write(b"abc").expect("write should succeed");
+    let mut reader: FatFile<'_> = fat
+        .open(&test_path("shrink.txt"), true, false, false, false)
+        .expect("open for read should succeed");
+    assert_eq!(read_to_end(&mut reader), b"abc", "reader should see the write");
+}
+
+/// Tests that closing a file that was removed or renamed after it was written to, while it was
+/// open, leaves the directory intact.
+#[test]
+fn close_after_unlink_or_rename_keeps_directory() {
+    let fat: FatHandle = FatHandle::new();
+    {
+        let mut file: FatFile<'_> = fat
+            .create_new(&test_path("removed.txt"), false, true)
+            .expect("create should succeed");
+        file.write(b"data").expect("write should succeed");
+        fat.unlink(&test_path("removed.txt"))
+            .expect("unlink should succeed");
+    }
+    {
+        let mut file: FatFile<'_> = fat
+            .create_new(&test_path("source.txt"), false, true)
+            .expect("create should succeed");
+        file.write(b"data").expect("write should succeed");
+        fat.rename(&test_path("source.txt"), &test_path("target.txt"))
+            .expect("rename should succeed");
+    }
+
+    let entries: Vec<FatDirEntry> = fat
+        .read_dir(&test_path(""))
+        .expect("read_dir should succeed");
+    let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, ["target.txt"], "closing the files should not bring back their old entries");
+    let mut reader: FatFile<'_> = fat
+        .open(&test_path("target.txt"), true, false, false, false)
+        .expect("open for read should succeed");
+    assert_eq!(read_to_end(&mut reader), b"data", "renamed file should keep its data");
+}
+
 // -- stat tests --------------------------------------------------------------
 
 /// Tests stat on root directory.

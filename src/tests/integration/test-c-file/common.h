@@ -171,6 +171,10 @@ extern void test_utime_preserve_imported_timestamps(void);
 // Tests whether we can write and read to/from a file.
 extern void test_write_read(void);
 
+// Tests whether data written through a file descriptor is visible to file descriptors that are
+// opened afterwards, while the writing file descriptor is still open.
+extern void test_write_visibility(void);
+
 // Tests whether we can write to a file using vectorized I/O.
 extern void test_writev(void);
 
