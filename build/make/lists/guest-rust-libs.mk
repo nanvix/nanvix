@@ -72,4 +72,5 @@ ALL_GUEST_RUST_LIBS := \
 	libc_wctype \
 	mmio-tag \
 	multiimage \
+	syscall-bench-common \
 	vfs-bench-common

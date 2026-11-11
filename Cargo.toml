@@ -97,6 +97,7 @@ members = [
         "src/libs/multiimage",
         "src/libs/mmio-tag",
         "src/libs/sys",
+        "src/libs/syscall-bench-common",
         "src/libs/type-safe",
         "src/libs/user-vm-api",
         "src/libs/vfs",
@@ -312,6 +313,7 @@ sys = { path = "src/libs/sys", default-features = false }
 sysapi = { path = "src/libs/sysapi", default-features = false }
 sysalloc = { path = "src/libs/sysalloc", default-features = false }
 syscall = { path = "src/libs/syscall", default-features = false }
+syscall-bench-common = { path = "src/libs/syscall-bench-common", default-features = false }
 syscomm = { path = "src/libs/syscomm", default-features = false }
 syslog = { path = "src/libs/syslog", default-features = false }
 syslog-macros = { path = "src/libs/syslog-macros", default-features = false }
