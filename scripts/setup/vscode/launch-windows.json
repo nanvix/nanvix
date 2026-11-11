@@ -1,0 +1,73 @@
+// Visual Studio Code Debug Configurations for Nanvix Development on Windows
+//
+// How to use:
+// 1. Install the C/C++ extension ('ms-vscode.cpptools'), which provides the 'cppvsdbg' debugger.
+// 2. Copy 'tasks-windows.json' into the '.vscode' folder as 'tasks.json'. Each configuration below
+//    rebuilds the binary that it debugs with a task from that file.
+// 3. Copy this file into the '.vscode' folder as 'launch.json'.
+// 4. Build Nanvix once with 'z.ps1 build -- all' (or the 'Build: all' task), so that 'bin' holds
+//    the kernel and the guest programs.
+// 5. Select a configuration in the 'Run and Debug' view and press F5.
+//
+// Notes:
+// - These configurations debug the host process, not the guest. 'nanvixd.exe' runs the VM in its
+//   own process through the UserVM library, so breakpoints in that library are hit in both
+//   configurations. Code in 'src/uservm/src/main.rs' only runs in 'uservm.exe'.
+// - 'uservm.exe' and 'nanvixd.exe' are built with the MSVC toolchain, so their debug information is
+//   in PDB format. Use 'cppvsdbg' rather than CodeLLDB, whose PDB support is limited.
+// - Only debug builds (the default) carry debug information. Release builds are stripped.
+// - Debug builds are optimized as well ('opt-level = 3' in the 'dev' profile of Cargo.toml), so
+//   some lines have no code that a breakpoint can bind to, and some variables are optimized out.
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug UserVM (uservm.exe)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/uservm.exe",
+            "args": [
+                "-kernel",
+                "${workspaceFolder}/bin/kernel.elf",
+                "-initrd",
+                "${input:guestProgram}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "RUST_LOG",
+                    "value": "info"
+                }
+            ],
+            "console": "integratedTerminal",
+            "preLaunchTask": "Build: uservm"
+        },
+        {
+            "name": "Debug nanvixd (nanvixd.exe)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/nanvixd.exe",
+            "args": [
+                "--",
+                "${input:guestProgram}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "RUST_LOG",
+                    "value": "info"
+                }
+            ],
+            "console": "integratedTerminal",
+            "preLaunchTask": "Build: nanvixd"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "guestProgram",
+            "type": "promptString",
+            "description": "Guest program to boot, relative to the workspace root.",
+            "default": "bin/hello-rust-nostd.elf"
+        }
+    ]
+}

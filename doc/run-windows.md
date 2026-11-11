@@ -258,6 +258,9 @@ For low-level debugging, you can bypass `nanvixd` and run the UserVM directly:
 .\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf
 ```
 
+To debug the UserVM in Visual Studio Code, use the debug configurations described in
+[setup-windows.md](setup-windows.md#debugging).
+
 Optional flags:
 
 | Flag                  | Description                                                      |

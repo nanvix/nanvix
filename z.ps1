@@ -12,8 +12,8 @@
 .EXAMPLE
     .\z.ps1 help
     .\z.ps1 build -- all
-    .\z.ps1 build -- uservm
-    .\z.ps1 build -- guest
+    .\z.ps1 build -- all-uservm
+    .\z.ps1 build -- all-kernel all-guest-binaries
     .\z.ps1 build -- lint-check
     .\z.ps1 build -- verify
     .\z.ps1 clean

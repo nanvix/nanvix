@@ -9,9 +9,18 @@ USERVM_FEATURES += $(if $(filter yes,$(RELEASE)),nightly-performance-optimizatio
 USERVM_FEATURES := $(strip $(USERVM_FEATURES))
 USERVM_CARGO_FEATURES := $(if $(USERVM_FEATURES),--features "$(USERVM_FEATURES)")
 
+# PDB filename for Windows symbol resolution (debuggers, xperf, WPA).
+USERVM_PDB := uservm.pdb
+
 all-uservm: init
 	$(HOST_CARGO_BUILD_CMD) $(USERVM_CARGO_FEATURES) -p uservm
 	$(CP_CMD) $(OBJECTS_DIR)/$(BUILD_MODE)/uservm$(CARGO_EXE_SUFFIX) $(BINARIES_DIR)/uservm.$(HOST_BIN_EXT)
+ifeq ($(IS_WINDOWS),yes)
+	# Copy PDB alongside the exe for symbol resolution.
+	@if [ -f "$(OBJECTS_DIR)/$(BUILD_MODE)/$(USERVM_PDB)" ]; then \
+		cp -f "$(OBJECTS_DIR)/$(BUILD_MODE)/$(USERVM_PDB)" "$(BINARIES_DIR)/$(USERVM_PDB)"; \
+	fi
+endif
 
 check-uservm:
 	@$(HOST_CARGO_CHECK_CMD) $(USERVM_CARGO_FEATURES) -p uservm
@@ -25,6 +34,7 @@ format-check-uservm:
 clean-uservm:
 	$(HOST_CARGO_CLEAN_CMD) -p uservm
 	$(RM_CMD) $(BINARIES_DIR)/uservm.$(HOST_BIN_EXT)
+	$(RM_CMD) $(BINARIES_DIR)/$(USERVM_PDB)
 
 rust-lint-uservm:
 	$(HOST_CARGO_CLIPPY_CMD) --tests $(USERVM_CARGO_FEATURES) -p uservm --fix --allow-dirty --allow-no-vcs

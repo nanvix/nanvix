@@ -36,10 +36,8 @@ VALID_MESSAGE_FORMATS: tuple[str, ...] = ("json", "json-diagnostic-rendered-ansi
 DEFAULT_MACHINE = "microvm"
 DEFAULT_TARGET = "x86"
 DEFAULT_LOG_LEVEL_DEBUG = "trace"
-DEFAULT_LOG_LEVEL_RELEASE = "warn"
+DEFAULT_LOG_LEVEL_RELEASE = "error"
 DEFAULT_TIMEOUT = 600
-DEFAULT_MEMORY_SIZE = 128
-DEFAULT_IMAGE = "nanvix.img"
 DEFAULT_RUN_PROGRAM = "bin/hello-rust-nostd.elf"
 
 # Known Make variables that z.py understands and may inject.
@@ -924,7 +922,7 @@ def cmd_bench(plat: PlatformInfo, config: BuildConfig) -> int:
 
     if not bench_bin.exists():
         hint = (
-            "z.ps1 build -- nanvix-bench"
+            "z.ps1 build -- all-nanvix-bench"
             if plat.is_windows
             else "./z build -- all-nanvix-bench"
         )
@@ -972,7 +970,7 @@ Build Parameters (after --):
   TIMEOUT=SECONDS                Execution timeout (default: 600).
   WHP=yes|no                     Windows Hypervisor Platform.
   HOST_CPU=CPU                   Target CPU for host builds.
-  MEMORY_SIZE=MB                 Memory size in megabytes (default: 128).
+  MEMORY_SIZE=MB                 Memory size in megabytes (default: 256).
 
 Run Options (after --):
   -program <path>       Path to guest binary (default: bin/hello-rust-nostd.elf).
@@ -981,7 +979,7 @@ Examples:
   ./z build                               Build everything (Linux defaults).
   ./z build --release -- MACHINE=microvm  Release build for microvm.
   z.ps1 build -- all                      Build everything (Windows).
-  z.ps1 build -- guest                    Cross-compile guest only.
+  z.ps1 build -- all-guest-binaries       Cross-compile guest binaries only.
   ./z test                                Run all tests.
 """
     "  ./z build -- verify                     Verify all annotated crates.\n"

@@ -373,10 +373,10 @@ class TestBuildConfig(unittest.TestCase):
         self.assertEqual(cfg.log_level, "trace")
 
     def test_default_log_level_release_mode(self) -> None:
-        """In release mode, the default log level is 'warn'."""
+        """In release mode, the default log level is 'error'."""
         cfg = zmod.BuildConfig(release=True)
         cfg.apply_platform_defaults(_linux_plat())
-        self.assertEqual(cfg.log_level, "warn")
+        self.assertEqual(cfg.log_level, "error")
 
 
 # ===========================================================================

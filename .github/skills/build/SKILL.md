@@ -39,8 +39,8 @@ Before building on Windows, ensure:
 
 ```bash
 # Kernel only.
-./z build -- kernel
-# Nanvixd only.
+./z build -- all-kernel
+# Nanvixd (also builds mkramfs and the guest binaries).
 ./z build -- all-nanvixd
 # UserVM only.
 ./z build -- all-uservm
@@ -53,12 +53,14 @@ Set these as environment variables or pass them after `--` in the `z` command:
 | Parameter        | Values                   | Default         |
 |------------------|--------------------------|-----------------|
 | `MACHINE`        | `microvm`                | `microvm`       |
-| `TARGET`         | `x86`                    | `x86`           |
+| `TARGET`         | `x86`, `x86_64`          | `x86`           |
 | `RELEASE`        | `yes`, `no`              | `no`            |
-| `LOG_LEVEL`      | `trace`, `debug`,        | `error`         |
+| `LOG_LEVEL`      | `trace`, `debug`,        | `trace`         |
 |                  | `info`, `warn`,          |                 |
 |                  | `error`, `panic`         |                 |
 | `PROFILER`       | `yes`, `no`              | `no`            |
+
+In release builds (`RELEASE=yes`), `LOG_LEVEL` defaults to `error`.
 
 Example with custom parameters:
 
@@ -82,29 +84,30 @@ cross-compiled using a local toolchain; host binaries (`nanvixd`, `uservm`) are 
 microvm backend (WHP on Windows).
 
 ```powershell
-# Build everything (guest via make + host binaries natively).
+# Build everything.
 .\z.ps1 build -- all
 
-# Build only the UserVM (native Windows build).
-.\z.ps1 build -- uservm
+# Build only the UserVM.
+.\z.ps1 build -- all-uservm
 
-# Build only nanvixd (native Windows build).
-.\z.ps1 build -- nanvixd
+# Build nanvixd (also builds mkramfs and the guest binaries).
+.\z.ps1 build -- all-nanvixd
 
-# Build only nanvix-bench (native Windows build).
-.\z.ps1 build -- nanvix-bench
+# Build only nanvix-bench.
+.\z.ps1 build -- all-nanvix-bench
 
-# Build only guest components (kernel + hello-rust-nostd).
-.\z.ps1 build -- guest
+# Build only guest components (the kernel, libraries, and binaries).
+.\z.ps1 build -- all-kernel all-guest-binaries
 
 # Release build.
 .\z.ps1 build -- all RELEASE=yes
 ```
 
-Any unrecognized target is forwarded to `make`, just like on Linux:
+`z.ps1` forwards all targets to `make`, just like `./z` on Linux, so target names are the same on
+both hosts:
 
 ```powershell
-.\z.ps1 build -- kernel
+.\z.ps1 build -- check
 .\z.ps1 build -- format-check
 .\z.ps1 build -- lint-check
 ```
@@ -182,7 +185,7 @@ command. Set `VERUS_EXECUTABLE_DIR` only for a custom installation.
 ### Cleaning on Windows
 
 ```powershell
-.\z.ps1 clean        # Quick clean (UserVM artifacts + cache).
+.\z.ps1 clean        # Quick clean (build artifacts of all components).
 .\z.ps1 distclean    # Full clean (cargo clean + all artifacts).
 ```
 
@@ -201,8 +204,10 @@ debug and release configurations. Run `./scripts/pipeline.sh` before declaring b
 ### Visual Studio Code
 
 Use the host-specific settings template. The Linux template invokes `./z`, while the Windows
-template routes Rust Analyzer through `./z.bat build -- check`, which runs native `cargo check`
-on host crates (`uservm`, `nanvixd`, `nanvix-test`, `mkramfs`).
+template routes Rust Analyzer through `./z.bat build -- check`, which runs `cargo check` on all
+crates: host crates (`uservm`, `nanvixd`, `nanvix-test`, `mkramfs`, ...) natively, and the kernel
+and guest crates by cross-compiling them. The Windows template also enables the `whp` feature, like
+Windows builds do, so that Rust Analyzer analyzes the WHP backend instead of the Linux-only KVM one.
 
 **Linux:**
 
@@ -216,11 +221,22 @@ ln -s ../scripts/setup/vscode/settings-linux.json settings.json
 ```powershell
 New-Item -ItemType Directory -Path .vscode -Force
 Copy-Item scripts\setup\vscode\settings-windows.json .vscode\settings.json
+Copy-Item scripts\setup\vscode\tasks-windows.json .vscode\tasks.json
+Copy-Item scripts\setup\vscode\launch-windows.json .vscode\launch.json
+Copy-Item scripts\setup\vscode\extensions-windows.json .vscode\extensions.json
 ```
 
-> **Note:** The `check` target in `z.ps1` only checks host crates natively. Guest and kernel
-> crates require the cross-compilation toolchain. Run
-> `.\z.ps1 build -- check-kernel check-guest-binaries` for a full cross-target check.
+The Windows tasks run `z.ps1` (`build -- all`, `build -- all-uservm`, `build -- all-nanvixd`,
+`run`, `test`, `build -- run-unit-tests`, `build -- run-nanvix-tests`). The launch configurations
+debug `bin\uservm.exe` and `bin\nanvixd.exe` with `cppvsdbg` from the C/C++ extension, because
+these MSVC binaries carry PDB debug information. The executables embed only the PDB file name, so
+`uservm.mk` and `nanvixd.mk` copy each PDB next to its executable in `bin\`. The `preLaunchTask`
+values must match the task labels in `tasks-windows.json`. See `doc/setup-windows.md`, "Visual
+Studio Code".
+
+> **Note:** The `check` target checks every crate, including the kernel and guest crates. To check
+> fewer crates, run per-component targets instead, for example `.\z.ps1 build -- check-uservm` or
+> `.\z.ps1 build -- check-kernel check-guest-binaries`.
 
 ## Troubleshooting Build Issues
 
