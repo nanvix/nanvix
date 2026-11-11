@@ -544,6 +544,90 @@ fn fat_descriptor_size_follows_writes() {
     forget_processes(&[pid]);
 }
 
+/// Tests that data written through a FAT descriptor is visible to `stat()` and to descriptors
+/// opened afterwards, while the writing descriptor is still open.
+#[test]
+fn fat_descriptor_writes_visible_to_new_descriptors() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7410);
+    set_current_process(pid);
+    let mount: &str = "/write-visibility";
+    crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+
+    // Create the file like a temporary file is created, and keep it open.
+    let path: &str = "/write-visibility/file.env";
+    let create_flags: c_int =
+        file_access_mode::O_RDWR | file_creation_flags::O_CREAT | file_creation_flags::O_EXCL;
+    let writer: c_int = vfs_open(path, create_flags).expect("create file");
+    let mut expected: Vec<u8> = Vec::new();
+    for data in [&b"KEY=value\n"[..], &b"OTHER=value\n"[..]] {
+        write_all(writer, data);
+        expected.extend_from_slice(data);
+
+        // A read-only descriptor reads a contiguous file in place, and a read-write descriptor
+        // reads it through its cluster chain.
+        for flags in [file_access_mode::O_RDONLY, file_access_mode::O_RDWR] {
+            let reader: c_int = vfs_open(path, flags).expect("open file for reading");
+            assert_eq!(read_to_end(reader), expected, "reader should see the writes");
+            vfs_close(reader).expect("close reader");
+        }
+        let mut metadata: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        vfs_stat(path, &mut metadata).expect("stat file");
+        assert_eq!(metadata.st_size, expected.len() as off_t, "stat should see the writes");
+    }
+
+    vfs_close(writer).expect("close writer");
+    vfs_unlink(path).expect("unlink file");
+    crate::state::unmount(mount).expect("unmount filesystem");
+    forget_processes(&[pid]);
+}
+
+/// Tests that truncating a FAT file through a descriptor is visible to `stat()` and to descriptors
+/// opened afterwards, while the truncating descriptor is still open.
+#[test]
+fn fat_descriptor_truncation_visible_to_new_descriptors() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7412);
+    set_current_process(pid);
+    let mount: &str = "/truncation-visibility";
+    crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+
+    let path: &str = "/truncation-visibility/file";
+    let create_flags: c_int = file_access_mode::O_WRONLY | file_creation_flags::O_CREAT;
+    let fd: c_int = vfs_open(path, create_flags).expect("create file");
+    write_all(fd, b"initial content");
+    vfs_close(fd).expect("close file");
+
+    // Truncate the file when opening it, and keep it open.
+    let writer: c_int = vfs_open(path, create_flags | file_creation_flags::O_TRUNC)
+        .expect("open file with O_TRUNC");
+    let reader: c_int = vfs_open(path, file_access_mode::O_RDONLY).expect("open file for reading");
+    assert_eq!(read_to_end(reader), b"", "reader should see the truncation on open");
+    vfs_close(reader).expect("close reader");
+    let mut metadata: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+    vfs_stat(path, &mut metadata).expect("stat file");
+    assert_eq!(metadata.st_size, 0, "stat should see the truncation on open");
+
+    write_all(writer, b"hello world");
+    vfs_ftruncate(writer, 5).expect("shrink file");
+    let reader: c_int = vfs_open(path, file_access_mode::O_RDONLY).expect("open file for reading");
+    assert_eq!(read_to_end(reader), b"hello", "reader should see the truncation");
+    vfs_close(reader).expect("close reader");
+    vfs_stat(path, &mut metadata).expect("stat file");
+    assert_eq!(metadata.st_size, 5, "stat should see the truncation");
+
+    vfs_close(writer).expect("close writer");
+    vfs_unlink(path).expect("unlink file");
+    crate::state::unmount(mount).expect("unmount filesystem");
+    forget_processes(&[pid]);
+}
+
 /// Tests opened terminal devices independently of the standard descriptor slots.
 #[test]
 fn terminal_device_open_modes() {
