@@ -254,6 +254,18 @@ fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
 
 /// Allocates a descriptor with initial open-file status flags.
 fn alloc_fd_with_status(handle: VfsFileHandle, status_flags: c_int) -> Result<c_int, Fat32Error> {
+    alloc_fd_with_flags(handle, FdFlags::default(), status_flags)
+}
+
+/// Allocates a descriptor with initial per-descriptor flags and open-file status flags.
+///
+/// The per-descriptor flags are set on the slot as it is inserted, under the same lock that
+/// allocates it, so no `fork` or `exec` can observe the new descriptor without them.
+fn alloc_fd_with_flags(
+    handle: VfsFileHandle,
+    fd_flags: FdFlags,
+    status_flags: c_int,
+) -> Result<c_int, Fat32Error> {
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     let state: &mut ProcessState = procs.entry(current_pid()).or_insert_with(ProcessState::new);
@@ -266,7 +278,7 @@ fn alloc_fd_with_status(handle: VfsFileHandle, status_flags: c_int) -> Result<c_
         virtual_pos: 0,
         status_flags,
     }));
-    state.slots.insert(fd, Slot::new(file));
+    state.slots.insert(fd, Slot::with_fd_flags(file, fd_flags));
     // Allocating a descriptor graduates a lazily-inserted placeholder into an active state: a
     // process holding a real descriptor must never be overwritten by a later fork-clone.
     state.initialized = true;
@@ -744,7 +756,31 @@ pub fn vfs_hostfs_set_readdir_offset(fd: c_int, offset: u32) -> bool {
 /// place in `fork`/`exec`/`close` accounting. Socket I/O still flows directly to `networkd`, keyed
 /// off `remote_fd`.
 pub fn vfs_register_socket(remote_fd: i32) -> Result<c_int, Fat32Error> {
-    alloc_fd(VfsFileHandle::Socket(SocketHandle::new(remote_fd)))
+    vfs_register_socket_with_flags(remote_fd, FdFlags::default(), 0)
+}
+
+/// Allocates a flat descriptor slot for a socket endpoint, with initial descriptor and status
+/// flags.
+///
+/// This is [`vfs_register_socket`] for a socket whose creation requested flags: the slot is born
+/// with the per-descriptor flags `fd_flags` (`FD_CLOEXEC`, `FD_CLOFORK`), and its open file
+/// description with the status flags `status_flags` (`O_NONBLOCK`). Both are in place when the slot
+/// is allocated, so no `fork` or `exec` can observe the descriptor without them. This is the
+/// atomicity that `SOCK_CLOEXEC`, `SOCK_CLOFORK`, and `SOCK_NONBLOCK` require.
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidArgument`] if `status_flags` has a bit other than `O_NONBLOCK` set,
+/// and [`Fat32Error::TooManyOpenFiles`] if the descriptor table is full.
+pub fn vfs_register_socket_with_flags(
+    remote_fd: i32,
+    fd_flags: FdFlags,
+    status_flags: c_int,
+) -> Result<c_int, Fat32Error> {
+    if status_flags & !file_status_flags::O_NONBLOCK != 0 {
+        return Err(Fat32Error::InvalidArgument);
+    }
+    alloc_fd_with_flags(VfsFileHandle::Socket(SocketHandle::new(remote_fd)), fd_flags, status_flags)
 }
 
 /// Returns the `networkd` descriptor backing a socket file descriptor, or `None` if `fd` is not a
