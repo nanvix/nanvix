@@ -7,6 +7,13 @@
 // File Descriptor Ranges
 //==================================================================================================
 
+/// Upper bound (exclusive) of the flat per-process descriptor namespace.
+///
+/// `vfsd` hands out the lowest free descriptor in `[0, MAX_OPEN_FDS)`. Every object — sockets,
+/// regular files, pipes, and console streams — draws from this single range, so there is no
+/// carved-out sub-range. Once a process exhausts it, allocating a descriptor fails with `EMFILE`.
+pub const MAX_OPEN_FDS: i32 = 2048;
+
 /// Base value of `networkd`'s internal socket descriptor space.
 ///
 /// `networkd` numbers the endpoints it owns by offsetting its host-side descriptors by this base.
