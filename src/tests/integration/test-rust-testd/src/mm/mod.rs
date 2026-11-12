@@ -380,11 +380,7 @@ fn test_mmap_multi_page() -> bool {
     }
 
     // Release memory management capability.
-    if ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false).is_err() {
-        return false;
-    }
-
-    true
+    ::sys::kcall::pm::__kcall_capctl(Capability::MemoryManagement, false).is_ok()
 }
 
 //==================================================================================================

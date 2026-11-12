@@ -30,7 +30,6 @@ use ::sysapi::{
         S_IRUSR,
         S_IWUSR,
     },
-    sys_types::mode_t,
 };
 
 //==================================================================================================
@@ -75,7 +74,7 @@ const MAX_ATTEMPTS: u32 = 128;
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn mkostemp(template: *mut c_char, flag: c_int) -> c_int {
     unsafe extern "C" {
-        fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int;
+        fn open(path: *const c_char, flags: c_int, ...) -> c_int;
     }
 
     let Some(len) = tmpname::validate(template) else {

@@ -55,7 +55,7 @@ use ::sysapi::{
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn tmpfile() -> *mut FILE {
     extern "C" {
-        fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int;
+        fn open(path: *const c_char, flags: c_int, ...) -> c_int;
         fn fdopen(fd: c_int, mode: *const c_char) -> *mut FILE;
         fn close(fd: c_int) -> c_int;
     }
@@ -82,9 +82,10 @@ pub unsafe extern "C" fn tmpfile() -> *mut FILE {
             idx -= 1;
         }
 
+        let perm: mode_t = 0o600;
         // SAFETY: name is a valid, null-terminated path; mode is valid.
         let fd: c_int =
-            unsafe { open(name.as_ptr().cast::<c_char>(), O_RDWR | O_CREAT | O_EXCL, 0o600) };
+            unsafe { open(name.as_ptr().cast::<c_char>(), O_RDWR | O_CREAT | O_EXCL, perm) };
         if fd >= 0 {
             // SAFETY: fd is a freshly opened, valid file descriptor.
             let stream: *mut FILE = unsafe { fdopen(fd, c"w+b".as_ptr()) };

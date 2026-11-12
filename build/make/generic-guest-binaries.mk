@@ -98,12 +98,13 @@ ifneq ($(_GUEST_BINS_PIC),)
 endif
 # Copy side-artifact images produced by guest build scripts (e.g., vfs-test.img).
 # The build script may be cached, so the copy it performs at build time is
-# unreliable after a bin/ clean. Re-copy from the build output directory.
+# unreliable after a bin/ clean. Re-copy from the build output directory, which
+# Cargo (since 1.100) lays out as build/<package>/<hash>/out/.
 # Multiple stale build hash directories may exist; pick the most recently
 # modified image to avoid copying an outdated artifact.
-	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/test-rust-vfs-test-*/out/test.img 2>/dev/null | head -n1); \
+	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/test-rust-vfs-test/*/out/test.img 2>/dev/null | head -n1); \
 		if [ -n "$$newest" ]; then $(CP_CMD) "$$newest" $(BINARIES_DIR)/test-rust-vfs-test.img; fi
-	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/vfs-bench-nostd-*/out/$(VFS_BENCH_IMG) 2>/dev/null | head -n1); \
+	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/vfs-bench-nostd/*/out/$(VFS_BENCH_IMG) 2>/dev/null | head -n1); \
 		if [ -n "$$newest" ]; then $(CP_CMD) "$$newest" $(BINARIES_DIR)/$(VFS_BENCH_IMG); fi
 # Reset mount-test-data so that subsequent test runs always start with pristine input.
 # A previous test execution may have modified files directly via hostfsd.

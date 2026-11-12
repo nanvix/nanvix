@@ -37,6 +37,9 @@ global_asm!(
     "    mov   %edx, %cr0",
     ".extern _do_start2",
     "    jmpl $0x8, $_do_start2",
+    // Undo `.code16`: otherwise, later `global_asm!` blocks in the same codegen unit are
+    // assembled as 16-bit code.
+    ".code32",
     options(att_syntax),
 );
 
@@ -63,6 +66,8 @@ global_asm!(
     "    orl     $1, %eax",
     "    mov    %eax, %cr0",
     "    jmpl $0x8, $_do_ap_start",
+    // Undo `.code16` (see above).
+    ".code32",
     options(att_syntax),
 );
 

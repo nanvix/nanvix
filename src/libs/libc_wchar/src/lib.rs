@@ -7,8 +7,6 @@
 
 // Attributes
 #![cfg_attr(not(feature = "std"), no_std)]
-// Features
-#![feature(c_variadic)]
 // Lints
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::cast_possible_truncation)]
@@ -24,6 +22,9 @@
 #![forbid(clippy::unimplemented)]
 #![forbid(clippy::todo)]
 #![forbid(clippy::unreachable)]
+// Nanvix uses a fixed-width C ABI where c_size_t is 32-bit, so libc symbols declared here differ
+// from the host's ones in 64-bit host builds (e.g., unit tests on Linux).
+#![allow(suspicious_runtime_symbol_definitions)]
 // The following lints are allowed in tests to facilitate testing of error conditions.
 #![cfg_attr(not(test), forbid(clippy::expect_used))]
 

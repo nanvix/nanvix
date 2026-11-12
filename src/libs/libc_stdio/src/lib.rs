@@ -8,8 +8,6 @@
 // Attributes
 // Use no_std except during tests so the Rust test harness (which requires std) can run.
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
-// Features
-#![feature(c_variadic)]
 // Lints
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::cast_precision_loss)]
@@ -33,6 +31,9 @@
 )]
 #![cfg_attr(target_pointer_width = "32", expect(clippy::cast_possible_wrap))]
 #![cfg_attr(not(target_pointer_width = "32"), expect(clippy::cast_possible_wrap))]
+// Nanvix uses a fixed-width C ABI where c_size_t is 32-bit, so libc symbols declared here differ
+// from the host's ones in 64-bit host builds (e.g., unit tests on Linux).
+#![allow(suspicious_runtime_symbol_definitions)]
 // The following lints are allowed in tests to facilitate testing of error conditions.
 #![cfg_attr(not(test), forbid(clippy::expect_used))]
 

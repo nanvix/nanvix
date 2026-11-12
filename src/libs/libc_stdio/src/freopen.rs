@@ -68,7 +68,7 @@ pub unsafe extern "C" fn freopen(
     stream: *mut FILE,
 ) -> *mut FILE {
     extern "C" {
-        fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int;
+        fn open(path: *const c_char, flags: c_int, ...) -> c_int;
         fn close(fd: c_int) -> c_int;
         fn dup2(oldfd: c_int, newfd: c_int) -> c_int;
     }

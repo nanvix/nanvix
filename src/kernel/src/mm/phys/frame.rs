@@ -283,6 +283,8 @@ impl Inner {
             }
         }
         // Newly allocated frames have a single owner.
+        // The loop invariant needs the index, so it cannot be rewritten with iterators.
+        #[allow(clippy::needless_range_loop)]
         #[verus_spec(
             invariant
                 start == frame_number as int,
