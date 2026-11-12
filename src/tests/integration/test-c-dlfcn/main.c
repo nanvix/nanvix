@@ -137,6 +137,22 @@ void test_dladdr(const char *path)
     close_library(handle);
 }
 
+// Tests if equivalent spellings of a library path share one handle.
+void test_dlopen_equivalent_paths(const char *path, const char *equivalent)
+{
+    void *handle = open_library(path);
+    void *same = open_library(equivalent);
+    assert(same == handle);
+    close_library(same);
+    close_library(handle);
+}
+
+// Tests if a library path with a trailing separator fails to open.
+void test_dlopen_trailing_separator(const char *path)
+{
+    assert(dlopen(path, RTLD_LAZY) == NULL);
+}
+
 /**
  * @brief Tests system calls to operate on dynamic load libraries.
  *
@@ -161,6 +177,8 @@ int main(int argc, const char *argv[])
     test_dlopen_dlclose("lib/libmul.so");
     test_dlsym("lib/libmul.so");
     test_dladdr("lib/libmul.so");
+    test_dlopen_equivalent_paths("lib/libmul.so", "./lib//./libmul.so");
+    test_dlopen_trailing_separator("lib/libmul.so/");
 
     // Write magic string to signal that the test passed.
     {
