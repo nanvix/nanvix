@@ -19,10 +19,12 @@ use ::anyhow::Result;
 use ::log::{
     error,
     info,
+    warn,
 };
 use ::nanvix::{
     config::system::DEFAULT_MACHINE_NAME,
     http::HttpServer,
+    hwloc,
     log::LogDestination,
     sandbox_config::StandaloneConfig,
     terminal::Terminal,
@@ -72,11 +74,25 @@ const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 /// On success, returns the workload exit code in interactive mode or success in HTTP mode.
 ///
 pub fn main() -> Result<ExitCode> {
+    let args: Args = Args::parse(
+        ::std::env::args()
+            .filter(|arg| !arg.trim().is_empty())
+            .collect(),
+    )?;
+
+    ::nanvix::log::init_with_destination(log_destination(&args), DEFAULT_LOG_LEVEL);
+
+    print_startup_info(&args);
+
+    // Pin the main thread before the runtime creates its threads, so that they inherit its CPU
+    // affinity.
+    pin_to_cpu_mask(&args)?;
+
     let runtime: Runtime = ::tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .map_err(|error| ::anyhow::anyhow!("failed to build tokio runtime: {error}"))?;
-    let result: Result<ExitCode> = runtime.block_on(async_main());
+    let result: Result<ExitCode> = runtime.block_on(async_main(args));
     // Bound the time spent waiting for leftover work, so that a VM that was torn down cannot keep
     // the daemon alive. Work still running after the timeout ends when the process exits.
     runtime.shutdown_timeout(RUNTIME_SHUTDOWN_TIMEOUT);
@@ -88,17 +104,11 @@ pub fn main() -> Result<ExitCode> {
 ///
 /// Asynchronous entry point for the Nanvix Daemon.
 ///
-async fn async_main() -> Result<ExitCode> {
-    let args: Args = Args::parse(
-        ::std::env::args()
-            .filter(|arg| !arg.trim().is_empty())
-            .collect(),
-    )?;
-
-    ::nanvix::log::init_with_destination(log_destination(&args), DEFAULT_LOG_LEVEL);
-
-    print_startup_info(&args);
-
+/// # Parameters
+///
+/// - `args`: Parsed command-line arguments.
+///
+async fn async_main(args: Args) -> Result<ExitCode> {
     let kernel_binary_path: String = ensure_kernel_binary_available(&args).await?;
     let config: StandaloneConfig = StandaloneConfig::new(
         kernel_binary_path,
@@ -186,6 +196,39 @@ async fn ensure_kernel_binary_available(args: &Args) -> Result<String> {
             Err(::anyhow::anyhow!(reason))
         },
     }
+}
+
+///
+/// # Description
+///
+/// Pins the Nanvix Daemon to the CPUs of its CPU mask, if any.
+///
+/// This function pins the calling thread, so it must run on the main thread before the Nanvix
+/// Daemon creates other threads. These threads inherit the CPU affinity of the main thread, so
+/// every thread of the Nanvix Daemon, including those that run User VMs, runs on those CPUs. CPU
+/// pinning is not supported on non-Unix hosts, on which this function only warns that the CPU
+/// mask is ignored.
+///
+/// # Parameters
+///
+/// - `args`: Parsed command-line arguments.
+///
+/// # Returns
+///
+/// On success, returns empty. On failure, returns an error that describes why the Nanvix Daemon
+/// could not be pinned.
+///
+fn pin_to_cpu_mask(args: &Args) -> Result<()> {
+    let Some(cpu_mask) = args.cpu_mask() else {
+        return Ok(());
+    };
+    if cfg!(unix) {
+        hwloc::pin_main_thread(cpu_mask.to_string())?;
+        info!("pinned to CPUs {cpu_mask}");
+    } else {
+        warn!("CPU pinning is not supported on this platform, ignoring CPU mask {cpu_mask}");
+    }
+    Ok(())
 }
 
 ///

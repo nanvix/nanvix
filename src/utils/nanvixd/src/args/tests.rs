@@ -370,6 +370,17 @@ fn config_file_host_rules_require_networking_enabled() {
 }
 
 #[test]
+fn config_file_sets_cpu_mask() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    ::std::fs::write(tmp_dir.path().join("hwloc.json"), r#"{"nanvixd_core_str": "2-3"}"#)
+        .expect("failed to write hwloc file");
+    let config_path: String = write_config_file(&tmp_dir, "hwloc = \"hwloc.json\"\n");
+
+    let args = Args::parse(argv(&["-config", &config_path, "--", "/bin/foo"])).expect("parse");
+    assert_eq!(args.cpu_mask(), Some("2-3"));
+}
+
+#[test]
 fn rejects_config_without_value() {
     let res = Args::parse(argv(&["-config"]));
     let msg: String = format!("{:#}", res.expect_err("expected missing-value error"));

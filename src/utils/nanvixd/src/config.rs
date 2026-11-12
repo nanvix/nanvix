@@ -11,7 +11,13 @@
 //==================================================================================================
 
 use ::anyhow::Result;
-use ::nanvix::sandbox_config::Ipv4Cidr;
+use ::nanvix::{
+    hwloc::{
+        self,
+        HwLoc,
+    },
+    sandbox_config::Ipv4Cidr,
+};
 use ::serde::Deserialize;
 use ::std::path::Path;
 
@@ -40,8 +46,10 @@ pub const FALLBACK_BIN_DIRECTORY: &str = "./bin";
 /// is named after the command-line option that it sets, without the leading dash and with the
 /// remaining dashes replaced by underscores (e.g., `bin_dir` sets `-bin-dir`). The exceptions are
 /// the repeatable `-allow-host` and `-block-host` options, which the `allow_hosts` and
-/// `block_hosts` arrays set. Every key is optional, and unknown keys are rejected. Relative paths
-/// are resolved against the directory that contains the configuration file.
+/// `block_hosts` arrays set, and the `hwloc` key, which has no command-line counterpart: it names
+/// a hardware locality file (`hwloc.json`), whose `nanvixd_core_str` entry lists the CPUs to
+/// which the Nanvix Daemon pins itself. Every key is optional, and unknown keys are rejected.
+/// Relative paths are resolved against the directory that contains the configuration file.
 ///
 /// On Windows, `gateway_sockaddr` must be a named pipe path (`\\.\pipe\<name>`), which is used as
 /// is, because it is not a filesystem path.
@@ -55,6 +63,7 @@ pub const FALLBACK_BIN_DIRECTORY: &str = "./bin";
 /// allow_host_networking = true
 /// allow_hosts = ["10.0.0.0/8"]
 /// block_hosts = ["10.0.0.1"]
+/// hwloc = "hwloc.json"
 /// ```
 ///
 #[derive(Debug, Default, Deserialize)]
@@ -93,6 +102,12 @@ pub(crate) struct ConfigFile {
     pub(crate) block_hosts: Vec<String>,
     /// Path of the gateway endpoint (`-gateway-sockaddr`).
     pub(crate) gateway_sockaddr: Option<String>,
+    /// Hardware locality file, whose `nanvixd_core_str` entry lists the CPUs to which the Nanvix
+    /// Daemon pins itself.
+    pub(crate) hwloc: Option<String>,
+    /// CPU mask loaded from the `nanvixd_core_str` entry of the hardware locality file.
+    #[serde(skip)]
+    pub(crate) cpu_mask: Option<String>,
 }
 
 //==================================================================================================
@@ -106,7 +121,8 @@ impl ConfigFile {
     /// Loads a configuration file.
     ///
     /// Relative paths are resolved against the directory that contains the configuration file.
-    /// Options are validated on their own, like their command-line counterparts.
+    /// Options are validated on their own, like their command-line counterparts, and the CPU mask
+    /// of the Nanvix Daemon is loaded from the hardware locality file, if any.
     ///
     /// # Parameters
     ///
@@ -116,7 +132,8 @@ impl ConfigFile {
     ///
     /// On success, returns the options that the configuration file sets. On failure, returns an
     /// error that names the configuration file: it cannot be read, it is not valid TOML, it has an
-    /// unknown key or a value of the wrong type, or it sets an invalid option.
+    /// unknown key or a value of the wrong type, it sets an invalid option, or its hardware
+    /// locality file cannot be loaded.
     ///
     pub(crate) fn load(path: &Path) -> Result<Self> {
         let contents: String = ::std::fs::read_to_string(path).map_err(|error| {
@@ -126,10 +143,38 @@ impl ConfigFile {
             anyhow::anyhow!("failed to parse configuration file {}: {error}", path.display())
         })?;
         config.resolve_paths(path.parent().unwrap_or(Path::new("")));
-        config.validate().map_err(|error| {
-            anyhow::anyhow!("invalid configuration file {}: {error}", path.display())
-        })?;
+        if let Err(error) = config.validate().and_then(|()| config.load_hwloc()) {
+            anyhow::bail!("invalid configuration file {}: {error}", path.display());
+        }
         Ok(config)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Loads the CPU mask of the Nanvix Daemon from the hardware locality file, if any.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns empty. On failure, returns an error: the hardware locality file cannot
+    /// be read, it is not valid JSON, or its `nanvixd_core_str` entry is missing or malformed.
+    ///
+    fn load_hwloc(&mut self) -> Result<()> {
+        let Some(hwloc_path) = &self.hwloc else {
+            return Ok(());
+        };
+        let contents: String = ::std::fs::read_to_string(hwloc_path)
+            .map_err(|error| anyhow::anyhow!("failed to read hwloc file {hwloc_path}: {error}"))?;
+        let hwloc: HwLoc = ::serde_json::from_str(&contents)
+            .map_err(|error| anyhow::anyhow!("failed to parse hwloc file {hwloc_path}: {error}"))?;
+        let Some(cpu_mask) = hwloc.get_nanvixd_core_str() else {
+            anyhow::bail!("hwloc file {hwloc_path} has no nanvixd_core_str entry");
+        };
+        hwloc::parse_cpu_mask(cpu_mask).map_err(|error| {
+            anyhow::anyhow!("invalid nanvixd_core_str in hwloc file {hwloc_path}: {error}")
+        })?;
+        self.cpu_mask = Some(cpu_mask.to_string());
+        Ok(())
     }
 
     ///
@@ -153,6 +198,7 @@ impl ConfigFile {
             // path, so it is used as is.
             #[cfg(unix)]
             &mut self.gateway_sockaddr,
+            &mut self.hwloc,
         ];
         for path in paths.into_iter().flatten() {
             // Joining an absolute path yields that path unchanged. Both components are UTF-8, so

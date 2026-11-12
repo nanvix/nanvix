@@ -120,6 +120,48 @@ fn config_file_reports_missing_file() {
 }
 
 #[test]
+fn config_file_loads_cpu_mask_from_hwloc_file() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    // Entries of other components, including legacy ones, are ignored.
+    ::std::fs::write(
+        tmp_dir.path().join("hwloc.json"),
+        r#"{"client_core_str": "0", "nanovm_core_str": "1", "nanvixd_core_str": "0-1,3"}"#,
+    )
+    .expect("failed to write hwloc file");
+    let config_path: PathBuf = write_config_file(tmp_dir.path(), "hwloc = \"hwloc.json\"\n");
+
+    let config_file: ConfigFile =
+        ConfigFile::load(&config_path).expect("failed to load configuration file");
+    assert_eq!(config_file.cpu_mask.as_deref(), Some("0-1,3"));
+}
+
+#[test]
+fn config_file_rejects_invalid_hwloc_files() {
+    let cases: [(Option<&str>, &str); 4] = [
+        (None, "failed to read hwloc file"),
+        (Some("{"), "failed to parse hwloc file"),
+        (Some(r#"{"client_core_str": "0"}"#), "has no nanvixd_core_str entry"),
+        (Some(r#"{"nanvixd_core_str": "0-1024"}"#), "out of range"),
+    ];
+    for (hwloc_contents, expected) in cases {
+        let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+        if let Some(hwloc_contents) = hwloc_contents {
+            ::std::fs::write(tmp_dir.path().join("hwloc.json"), hwloc_contents)
+                .expect("failed to write hwloc file");
+        }
+        let config_path: PathBuf = write_config_file(tmp_dir.path(), "hwloc = \"hwloc.json\"\n");
+        let error: ::anyhow::Error =
+            ConfigFile::load(&config_path).expect_err("invalid hwloc file");
+        let message: String = error.to_string();
+        assert!(message.contains(expected), "unexpected error for {hwloc_contents:?}: {message}");
+        assert!(
+            message.contains(&config_path.display().to_string()),
+            "error does not name the configuration file: {message}"
+        );
+    }
+}
+
+#[test]
 fn executable_directory_returns_parent_directory() {
     let bin_directory: PathBuf = PathBuf::from("sysroot").join("bin");
     let executable_path: PathBuf = bin_directory.join("nanvixd.elf");

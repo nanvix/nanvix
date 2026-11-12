@@ -80,6 +80,9 @@ pub struct Args {
     /// and writes to its stdin. UDS path on Unix, named pipe path on
     /// Windows. Defaults to a per-process auto path when omitted.
     gateway_sockaddr: Option<String>,
+    /// Optional CPU mask to which nanvixd pins itself, from the `nanvixd_core_str` entry of the
+    /// hardware locality file of the configuration file.
+    cpu_mask: Option<String>,
 }
 
 //==================================================================================================
@@ -368,6 +371,7 @@ impl Args {
         #[cfg(feature = "gdb")]
         let gdb_port: Option<u16> = gdb_port.or(config_file.gdb_port);
         let gateway_sockaddr: Option<String> = gateway_sockaddr.or(config_file.gateway_sockaddr);
+        let cpu_mask: Option<String> = config_file.cpu_mask;
         if config_file.allow_host_networking {
             networking_mode = NetworkingMode::Enabled;
         }
@@ -460,6 +464,7 @@ impl Args {
             host_filter,
             log_to_stdout,
             gateway_sockaddr,
+            cpu_mask,
         })
     }
 
@@ -731,6 +736,22 @@ Options:
     /// instead of the file logger. See [`Self::OPT_LOG_TO_STDOUT`].
     pub fn log_to_stdout(&self) -> bool {
         self.log_to_stdout
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the CPU mask to which nanvixd pins itself.
+    ///
+    /// The CPU mask is the `nanvixd_core_str` entry of the hardware locality file that the `hwloc`
+    /// key of the configuration file names. It has been validated already.
+    ///
+    /// # Returns
+    ///
+    /// The CPU mask, if any.
+    ///
+    pub fn cpu_mask(&self) -> Option<&str> {
+        self.cpu_mask.as_deref()
     }
 }
 
