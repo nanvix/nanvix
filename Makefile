@@ -1068,7 +1068,7 @@ run-unit-tests: test-python
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
-run-unit-tests: test-nanvix-bench
+run-unit-tests: test-nanvix-bench test-nanvixd
 
 # On Windows, test selected host components (other host rlibs have Unix-only test dependencies).
 ifeq ($(IS_WINDOWS),yes)
