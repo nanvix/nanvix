@@ -29,6 +29,15 @@ extern crate alloc;
 extern crate log as syslog;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Maximum number of wait requests that the process manager daemon keeps blocked at the same time.
+/// A blocking `waitpid()` issued while this many requests are blocked fails with `ENOBUFS`. A
+/// request no longer counts once it completes, is cancelled, or its thread or process terminates.
+pub const MAX_BLOCKED_WAITERS: usize = ::config::kernel::MAX_THREADS * 4;
+
+//==================================================================================================
 // Exports
 //==================================================================================================
 

@@ -31,6 +31,7 @@ use crate::{
     WaitCancelMessage,
     WaitMessage,
     WaitTarget,
+    MAX_BLOCKED_WAITERS,
 };
 use ::alloc::{
     collections::btree_map::BTreeMap,
@@ -86,9 +87,6 @@ use ::sys::{
 /// to user space), kept in sync by convention rather than by a shared definition, as this crate
 /// does not depend on the user-space API crate.
 const WNOHANG: i32 = 1;
-
-/// Maximum number of wait requests that may be blocked concurrently.
-const MAX_BLOCKED_WAITERS: usize = ::config::kernel::MAX_THREADS * 4;
 
 /// Maximum number of fork synchronizations that may await process creation or clone completion.
 const MAX_PENDING_FORK_SYNCS: usize = ::config::kernel::MAX_PROCESSES;
