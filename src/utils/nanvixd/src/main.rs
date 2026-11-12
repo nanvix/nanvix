@@ -235,6 +235,10 @@ fn print_startup_info(args: &Args) {
         DEFAULT_MACHINE_NAME
     );
 
+    if let Some(config_path) = args.config_path() {
+        info!("configuration file: {config_path}");
+    }
+
     if let Some(snapshot) = args.snapshot_path() {
         info!("snapshot restore from: {snapshot}");
     }
