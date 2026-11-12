@@ -14,6 +14,8 @@ homepage.workspace = true
 crate-type = ["lib"]
 
 [dependencies]
+config = { workspace = true }
+static_assert = { workspace = true }
 sys = { workspace = true }
 sysapi = { workspace = true }
 syscall = { workspace = true, features = ["syscall"] }
