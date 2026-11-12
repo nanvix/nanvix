@@ -782,6 +782,7 @@ name = "fs-core"
 version = "0.24.126"
 dependencies = [
  "compiler_builtins",
+ "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
 ]
 
