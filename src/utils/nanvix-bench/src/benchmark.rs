@@ -24,6 +24,7 @@ pub enum BenchmarkFlavour {
     ColdStart,
     ColdStartUvm,
     SnapshotRestore,
+    SyscallBench,
     VfsBench,
     WarmStartGateway,
     WarmStartVMM,
@@ -58,6 +59,9 @@ impl BenchmarkFlavour {
             BenchmarkFlavour::SnapshotRestore => {
                 format!("{}/bin/snapshot-rust-nostd.{ext}", root.display())
             },
+            BenchmarkFlavour::SyscallBench => {
+                format!("{}/bin/syscall-bench-nostd.{ext}", root.display())
+            },
             BenchmarkFlavour::VfsBench => {
                 format!("{}/bin/vfs-bench-nostd.{ext}", root.display())
             },
@@ -88,6 +92,7 @@ impl fmt::Display for BenchmarkFlavour {
             BenchmarkFlavour::ColdStart => "cold-start",
             BenchmarkFlavour::ColdStartUvm => "cold-start-uvm",
             BenchmarkFlavour::SnapshotRestore => "snapshot-restore",
+            BenchmarkFlavour::SyscallBench => "syscall-bench",
             BenchmarkFlavour::VfsBench => "vfs-bench",
             BenchmarkFlavour::WarmStartGateway => "warm-start-gateway",
             BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
@@ -106,6 +111,7 @@ impl FromStr for BenchmarkFlavour {
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
             "cold-start-uvm" => Ok(BenchmarkFlavour::ColdStartUvm),
             "snapshot-restore" => Ok(BenchmarkFlavour::SnapshotRestore),
+            "syscall-bench" => Ok(BenchmarkFlavour::SyscallBench),
             "vfs-bench" => Ok(BenchmarkFlavour::VfsBench),
             "warm-start-gateway" => Ok(BenchmarkFlavour::WarmStartGateway),
             "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),

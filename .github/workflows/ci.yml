@@ -1228,7 +1228,7 @@ jobs:
         include:
           - machine-type: microvm
             standard-benchmarks: "boot-time cold-start cold-start-uvm snapshot-restore
-              warm-start-gateway warm-start-vmm"
+              syscall-bench warm-start-gateway warm-start-vmm"
             standard-iterations: "100"
             payload-size: ""
             vfs-benchmarks: "vfs-bench"
@@ -1337,9 +1337,9 @@ jobs:
 
   # Build from source and run micro-benchmarks on self-hosted Windows baremetal
   # runners. Only standalone-mode benchmarks are supported (boot-time, cold-start,
-  # snapshot-restore, vfs-bench, warm-start-gateway, warm-start-vmm, warm-start-socket). The
-  # self-hosted runner is a dedicated machine with a known-functional WHP hypervisor, so the WHP
-  # probe and Defender exclusion steps are omitted.
+  # snapshot-restore, syscall-bench, vfs-bench, warm-start-gateway, warm-start-vmm,
+  # warm-start-socket). The self-hosted runner is a dedicated machine with a known-functional WHP
+  # hypervisor, so the WHP probe and Defender exclusion steps are omitted.
   windows-benchmark:
     name: "Windows Benchmark (${{ matrix.machine-type }})"
     needs: [ benchmark-gate-windows ]
@@ -1354,8 +1354,8 @@ jobs:
         machine-type: [ microvm ]
         include:
           - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start cold-start-uvm snapshot-restore vfs-bench
-              warm-start-gateway warm-start-vmm warm-start-socket"
+            standard-benchmarks: "boot-time cold-start cold-start-uvm snapshot-restore
+              syscall-bench vfs-bench warm-start-gateway warm-start-vmm warm-start-socket"
             standard-iterations: "100"
             payload-size: ""
             profiler: "PROFILER=yes"
@@ -1563,7 +1563,7 @@ jobs:
         id: url
         shell: bash
         run: |
-          benchmarks="boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,warm-start-gateway,warm-start-vmm,warm-start-socket"
+          benchmarks="boot-time,cold-start,cold-start-uvm,snapshot-restore,syscall-bench,vfs-bench,warm-start-gateway,warm-start-vmm,warm-start-socket"
           url=$(python3 ./scripts/benchmark.py \
             ci-url \
             --target-dir "linux-baremetal" \
@@ -1577,7 +1577,8 @@ jobs:
       - name: "Gate on Performance Regressions"
         if: github.ref_name != 'dev'
         shell: bash
-        # vfs-bench uses a different CSV schema. Size-sweep benchmarks are also excluded.
+        # syscall-bench and vfs-bench use a different CSV schema. Size-sweep benchmarks are
+        # also excluded.
         # The in-tree baseline matches dev: the gate only runs the pipeline for
         # branches that are up to date with it.
         run: |
@@ -1596,8 +1597,8 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,\
-            warm-start-gateway,warm-start-vmm,warm-start-socket"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,syscall-bench,\
+            vfs-bench,warm-start-gateway,warm-start-vmm,warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
           source-dir: "linux-baremetal"
@@ -1662,7 +1663,7 @@ jobs:
         id: url
         shell: bash
         run: |
-          benchmarks="boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,warm-start-gateway,warm-start-vmm,warm-start-socket"
+          benchmarks="boot-time,cold-start,cold-start-uvm,snapshot-restore,syscall-bench,vfs-bench,warm-start-gateway,warm-start-vmm,warm-start-socket"
           url=$(python3 ./scripts/benchmark.py \
             ci-url \
             --target-dir "windows-baremetal" \
@@ -1676,7 +1677,8 @@ jobs:
       - name: "Gate on Performance Regressions"
         if: github.ref_name != 'dev'
         shell: bash
-        # vfs-bench is excluded: it uses a different CSV schema (not percentile-based).
+        # syscall-bench and vfs-bench are excluded: they use a different CSV schema (not
+        # percentile-based).
         # Size-sweep benchmarks are also excluded (multi-row).
         # The in-tree baseline matches dev: the gate only runs the pipeline for
         # branches that are up to date with it.
@@ -1696,8 +1698,8 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,\
-            warm-start-gateway,warm-start-vmm,warm-start-socket"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,syscall-bench,\
+            vfs-bench,warm-start-gateway,warm-start-vmm,warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
           source-dir: "windows-baremetal"

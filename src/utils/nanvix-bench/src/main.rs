@@ -109,6 +109,7 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::ColdStart => benchmark.run_cold_start_standalone().await,
         BenchmarkFlavour::ColdStartUvm => benchmark.run_cold_start_uvm().await,
         BenchmarkFlavour::SnapshotRestore => benchmark.run_snapshot_restore().await,
+        BenchmarkFlavour::SyscallBench => benchmark.run_syscall_bench_standalone().await,
         BenchmarkFlavour::VfsBench => benchmark.run_vfs_bench_standalone().await,
         BenchmarkFlavour::WarmStartGateway => benchmark.run_warm_start_gateway().await,
         BenchmarkFlavour::WarmStartVMM => benchmark.run_warm_start_vmm().await,

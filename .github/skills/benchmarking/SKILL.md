@@ -27,6 +27,7 @@ Benchmarks require a release build with panic-level logging.
 | `cold-start`        | Spawn nanvixd + VM + first echo round trip   |
 | `cold-start-uvm`    | Start a user VM + first gateway echo         |
 | `snapshot-restore`  | Compare snapshot restore with cold boot      |
+| `syscall-bench`     | Measure guest system call latency            |
 | `vfs-bench`         | Measure guest VFS operation latency          |
 | `warm-start-gateway` | Round-trip latency through the VM gateway    |
 | `warm-start-vmm`    | Raw round-trip latency inside the user VM    |
@@ -121,6 +122,7 @@ the time from process spawn to the first echo round trip.
 | `cold-start`       | Spawn nanvixd + VM + echo round-trip                    |
 | `cold-start-uvm`   | Start a user VM + first gateway echo                    |
 | `snapshot-restore` | Measure snapshot restore latency vs boot-time           |
+| `syscall-bench`    | Measure guest system call latency                       |
 | `warm-start-gateway` | Round-trip latency through the VM gateway              |
 | `warm-start-vmm`   | Raw round-trip latency inside the user VM               |
 

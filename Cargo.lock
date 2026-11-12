@@ -1980,6 +1980,7 @@ dependencies = [
  "rand 0.10.3",
  "reqwest",
  "serde_json",
+ "syscall-bench-common",
  "tokio",
  "user-vm-api",
  "vfs-bench-common",
@@ -3094,6 +3095,24 @@ dependencies = [
  "sysapi",
  "syslog",
  "type-safe",
+]
+
+[[package]]
+name = "syscall-bench-common"
+version = "0.24.127"
+
+[[package]]
+name = "syscall-bench-nostd"
+version = "0.24.127"
+dependencies = [
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syscall-bench-common",
 ]
 
 [[package]]

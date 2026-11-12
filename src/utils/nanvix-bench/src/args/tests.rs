@@ -50,6 +50,19 @@ fn parse_accepts_cold_start_uvm() {
 }
 
 #[test]
+fn parse_accepts_syscall_bench() {
+    let args: Vec<String> = vec![
+        "nanvix-bench".to_string(),
+        "-benchmark".to_string(),
+        "syscall-bench".to_string(),
+    ];
+
+    let args: Args = Args::parse(args).expect("expected syscall-bench to parse");
+
+    assert!(matches!(args.benchmark(), super::BenchmarkFlavour::SyscallBench));
+}
+
+#[test]
 fn parse_accepts_warm_start_gateway_payload_size_override() {
     let args: Vec<String> = vec![
         "nanvix-bench".to_string(),

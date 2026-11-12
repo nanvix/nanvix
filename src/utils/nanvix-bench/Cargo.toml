@@ -22,6 +22,7 @@ nanvix = { workspace = true, features = ["internal-api"] }
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde_json = { workspace = true, features = ["std"] }
+syscall-bench-common = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
 vfs-bench-common = { workspace = true }

@@ -263,7 +263,7 @@ impl Benchmark {
                 &program,
             )
             .await?;
-        Self::print_latency_table("Writable mount", &mut writable_deltas);
+        super::print_latency_table("Writable mount", "us", &mut writable_deltas);
 
         // Phase 2: read-only mount.
         let mut readonly_deltas: Vec<(&str, Vec<u128>)> = self
@@ -276,7 +276,7 @@ impl Benchmark {
                 &program,
             )
             .await?;
-        Self::print_latency_table("Read-only mount", &mut readonly_deltas);
+        super::print_latency_table("Read-only mount", "us", &mut readonly_deltas);
 
         Ok(())
     }
@@ -400,7 +400,7 @@ impl Benchmark {
         if !ramfs_load_samples.is_empty() {
             let mut setup_data: Vec<(&str, Vec<u128>)> =
                 vec![("ramfs_load", ramfs_load_samples.into_iter().map(u128::from).collect())];
-            Self::print_latency_table("VM setup", &mut setup_data);
+            super::print_latency_table("VM setup", "us", &mut setup_data);
         }
 
         Ok(paired_deltas)
@@ -514,24 +514,6 @@ impl Benchmark {
             anyhow::anyhow!("VFS benchmark timed out after {VFS_BENCH_TIMEOUT_SECS}s")
         })??;
         Ok(start.elapsed().as_micros())
-    }
-
-    /// Prints a percentile latency table (p50, p95, p99) with the given header.
-    fn print_latency_table(header: &str, data: &mut [(&str, Vec<u128>)]) {
-        println!(
-            "\n{:<22} {:>8} {:>10} {:>10} {:>10}",
-            header, "Samples", "p50 (us)", "p95 (us)", "p99 (us)"
-        );
-        println!("{}", "-".repeat(62));
-
-        for (name, latencies) in data.iter_mut() {
-            latencies.sort();
-            let len: usize = latencies.len();
-            let p50: u128 = latencies[((len as f64 * 0.5) as usize).min(len - 1)];
-            let p95: u128 = latencies[((len as f64 * 0.95) as usize).min(len - 1)];
-            let p99: u128 = latencies[((len as f64 * 0.99) as usize).min(len - 1)];
-            println!("{:<22} {:>8} {:>10} {:>10} {:>10}", name, len, p50, p95, p99);
-        }
     }
 
     /// Spawns a nanvixd process in interactive mode and returns the child, stdin, and stdout.
