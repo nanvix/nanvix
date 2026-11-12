@@ -20,10 +20,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # Upload and deploy run in separate jobs: within one job, deploy-pages can
+  # list the run's artifacts before the one just uploaded becomes visible
+  # (actions/deploy-pages#451).
+  upload:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -36,6 +36,13 @@ jobs:
         with:
           path: www/bench
 
+  deploy:
+    needs: upload
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    steps:
       - name: "Deploy to GitHub Pages"
         id: deployment
         uses: actions/deploy-pages@v5
