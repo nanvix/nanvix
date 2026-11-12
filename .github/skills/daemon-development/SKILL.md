@@ -30,8 +30,10 @@ events/messages.
 
 ### Process Daemon (`procd`)
 
-- Manages process lifecycle (creation, termination, scheduling).
-- Handles IPC-based process management requests.
+- Owns the kernel's scheduling events, which are process and thread lifecycle events: process
+  creation, thread termination, and process termination, delivered in production order.
+- Handles IPC-based process management requests, such as `waitpid()`, and drops the waits of a
+  thread when its termination event arrives.
 
 ## Building Daemons
 

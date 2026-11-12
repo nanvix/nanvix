@@ -91,7 +91,7 @@ const WNOHANG: i32 = 1;
 /// Maximum number of fork synchronizations that may await process creation or clone completion.
 const MAX_PENDING_FORK_SYNCS: usize = ::config::kernel::MAX_PROCESSES;
 
-/// A decoded process-lifecycle message from the kernel.
+/// A decoded lifecycle message from the kernel, reporting a process or thread lifecycle event.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum LifecycleMessage {
     /// A process was created.
@@ -283,7 +283,7 @@ impl WaitSelector {
 ///
 /// # Description
 ///
-/// A parent process blocked in a `Wait` operation, awaiting a deferred reply.
+/// A `Wait` request that a thread of a parent process blocked, awaiting a deferred reply.
 ///
 struct BlockedWaiter {
     /// Process identifier of the blocked waiter.
@@ -298,8 +298,9 @@ struct BlockedWaiter {
 // Standalone Functions
 //==================================================================================================
 
-/// Parses and authenticates a process-lifecycle message published by the kernel. Returns `None`
-/// when the message carries no lifecycle event, so that callers fall through to their own handling.
+/// Parses and authenticates a process or thread lifecycle message published by the kernel. Returns
+/// `None` when the message carries no lifecycle event, so that callers fall through to their own
+/// handling.
 fn parse_lifecycle_message(message: &Message) -> Result<Option<LifecycleMessage>, Error> {
     match message.message_type {
         MessageType::ProcessCreationEvent => {
@@ -335,7 +336,7 @@ fn parse_lifecycle_message(message: &Message) -> Result<Option<LifecycleMessage>
 fn authenticate_lifecycle_message(message: &Message) -> Result<(), Error> {
     let source: MessageSender = message.source;
     if source != MessageSender::KERNEL {
-        let reason: &str = "process lifecycle message did not originate from kernel";
+        let reason: &str = "lifecycle message did not originate from kernel";
         ::syslog::warn!("authenticate_lifecycle_message(): {reason} (source={source:?})");
         return Err(Error::new(ErrorCode::PermissionDenied, reason));
     }
@@ -397,8 +398,10 @@ pub struct ProcessDaemon {
     next_request_id: u32,
     /// `setsid()` requests awaiting terminal-detachment acknowledgement from the filesystem daemon.
     pending_setsid: Vec<PendingSetSid>,
-    /// Parents currently blocked in a `Wait` operation. A blocking `waitpid()` is parked here and
-    /// answered later, when a process-termination event for a matching child arrives.
+    /// Wait requests currently blocked. A blocking `waitpid()` is parked here and answered later,
+    /// when a process-termination event for a matching child arrives. A request is dropped instead
+    /// when it is cancelled, or when the thread or process that issued it terminates, so a
+    /// terminated waiter never holds one of the [`MAX_BLOCKED_WAITERS`] slots.
     blocked: Vec<BlockedWaiter>,
     /// Ownership and foreground-group state of the system controlling terminal.
     controlling_terminal: ControllingTerminal,
@@ -442,10 +445,13 @@ impl ProcessDaemon {
         ::syslog::info!("acquiring process management capabilities...");
         ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, true)?;
 
-        // Subscribe to scheduling events. Scheduling events are owned as a single class: a single
-        // registration claims ownership of every scheduling event. The kernel publishes a creation
-        // event whenever a process forks a child, which the daemon uses to record the parent/child
-        // relationship without the parent having to register the child explicitly.
+        // Subscribe to scheduling events, which are the process and thread lifecycle events that the
+        // kernel publishes. Scheduling events are owned as a single class: a single registration
+        // claims ownership of every scheduling event. The kernel publishes a creation event whenever
+        // a process forks a child, which the daemon uses to record the parent/child relationship
+        // without the parent having to register the child explicitly; a thread-termination event
+        // whenever a thread terminates, which releases the waits that the thread left blocked; and a
+        // process-termination event once the last thread of a process terminates.
         ::syslog::info!("subscribing to scheduling events...");
         ::sys::kcall::event::__kcall_evctrl(
             Event::Scheduling(SchedulingEvent::ProcessTermination),
@@ -532,7 +538,7 @@ impl ProcessDaemon {
         None
     }
 
-    /// Handles an authenticated process-lifecycle message in normal operation.
+    /// Handles an authenticated lifecycle message in normal operation.
     fn handle_lifecycle_message(
         &mut self,
         lifecycle: LifecycleMessage,
@@ -730,12 +736,13 @@ impl ProcessDaemon {
 
             // A forked user process terminated. Finalizing it re-parents its surviving children,
             // reaps its zombie children, and either retains it as a reapable zombie or drops it —
-            // all of which require the child's lineage to be recorded. The kernel guarantees that a
-            // process's creation event is delivered before its termination event (a single FIFO
-            // scheduling-event queue), so by the time this termination is handled the creation event
-            // has already recorded the child's lineage. The filesystem-exit notification issued by
-            // `cleanup_terminated()` is therefore ordered after the fork-clone that the creation
-            // handler dispatched, so the child's filesystem snapshot is taken before it is reclaimed.
+            // all of which require the child's lineage to be recorded. The kernel delivers
+            // lifecycle events in production order, so the creation event of a process, and the
+            // termination event of each of its threads, precede its termination event: by the time
+            // this termination is handled, the creation event has already recorded the child's
+            // lineage. The filesystem-exit notification issued by `cleanup_terminated()` is
+            // therefore ordered after the fork-clone that the creation handler dispatched, so the
+            // child's filesystem snapshot is taken before it is reclaimed.
             ProcessRole::User => {
                 self.cleanup_terminated(pid);
                 self.finalize_forked_child_termination(pid, status)?;
@@ -744,7 +751,12 @@ impl ProcessDaemon {
         }
     }
 
-    /// Drops blocked wait requests owned by a terminated thread.
+    /// Drops the blocked wait requests owned by a terminated thread.
+    ///
+    /// The kernel is the only source of this event: it publishes one at the live-to-zombie
+    /// transition of every thread, ordered after every request that the thread sent before it
+    /// terminated, and user space never reports thread termination. Once the event is handled, the
+    /// thread can issue no further request, and no blocked request of the thread can be answered.
     fn handle_thread_termination_event(&mut self, info: ThreadTerminationInfo) {
         let pid: ProcessIdentifier = info.pid;
         let tid: ThreadIdentifier = info.tid;
@@ -2702,7 +2714,7 @@ impl ProcessDaemon {
         }
     }
 
-    /// Handles an authenticated process-lifecycle message while shutting down.
+    /// Handles an authenticated lifecycle message while shutting down.
     fn handle_shutdown_lifecycle_message(&mut self, lifecycle: LifecycleMessage) {
         match lifecycle {
             LifecycleMessage::ProcessTermination(info) => {
