@@ -56,6 +56,7 @@ use ::sys::{
         ProcessCreationInfo,
         ProcessRole,
         SchedulingEvent,
+        ThreadTerminationInfo,
     },
     ipc::{
         Message,
@@ -68,6 +69,7 @@ use ::sys::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    ExitStatus,
 };
 
 //==================================================================================================
@@ -317,6 +319,240 @@ fn queue_global_lifecycle(pid: ProcessIdentifier) -> bool {
             false
         },
     }
+}
+
+///
+/// # Description
+///
+/// Queues a thread-termination record through the global process manager, reserving its capacity
+/// as thread creation does.
+///
+/// # Parameters
+///
+/// - `info`: Thread-termination record to queue.
+///
+/// # Returns
+///
+/// `true` if the record was queued, otherwise `false`.
+///
+fn queue_global_thread_termination(info: ThreadTerminationInfo) -> bool {
+    // SAFETY: this late integration test runs after process-manager initialization with interrupts
+    // disabled and does not retain a process-manager reference across another global access.
+    match unsafe { ProcessManager::get_mut() }.queue_test_thread_termination(info) {
+        Ok(()) => true,
+        Err(error) => {
+            error!("failed to queue test thread-termination record (error={error:?})");
+            false
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Reads the lifecycle capacity in use from the global process manager.
+///
+/// # Returns
+///
+/// The number of lifecycle slots in use, or [`None`] if accounting overflows.
+///
+fn global_lifecycle_capacity_in_use() -> Option<usize> {
+    // SAFETY: this late integration test runs with interrupts disabled and retains no reference.
+    unsafe { ProcessManager::get_mut() }.lifecycle_capacity_in_use()
+}
+
+/// Item expected from an ordered production-path delivery sequence.
+enum ExpectedDelivery {
+    /// IPC message identified by its status marker.
+    Ipc(i32),
+    /// Thread-termination record with exact identity and status.
+    ThreadTermination(ThreadTerminationInfo),
+    /// Interrupt event.
+    Interrupt,
+}
+
+impl ExpectedDelivery {
+    ///
+    /// # Description
+    ///
+    /// Reports whether a delivered message is this expected item.
+    ///
+    /// # Parameters
+    ///
+    /// - `message`: Delivered message to check.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `message` is this item, otherwise `false`.
+    ///
+    fn matches(&self, message: &Message) -> bool {
+        match self {
+            Self::Ipc(status) => {
+                message.message_type == MessageType::Ipc && message.status == *status
+            },
+            Self::ThreadTermination(info) => {
+                let info_bytes = info.to_ne_bytes();
+                message.message_type == MessageType::ThreadTerminationEvent
+                    && message.payload[..info_bytes.len()] == info_bytes
+            },
+            Self::Interrupt => message.message_type == MessageType::Interrupt,
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Fails the user copy of the next production-path delivery, retries it, and verifies that both
+/// attempts observe the same expected item.
+///
+/// # Parameters
+///
+/// - `expected`: Item that both the failed and the retried copy must observe.
+///
+/// # Returns
+///
+/// `true` if the failed copy retained the item and the retry committed it, otherwise `false`.
+///
+fn receive_after_failed_copy(expected: &ExpectedDelivery) -> bool {
+    let mut failed: Option<Message> = None;
+    // SAFETY: the caller queued `expected`, so the kernel test process cannot block.
+    let failed_copy: Result<(), SleepError> = unsafe {
+        recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |message| {
+            failed = Some(message.clone());
+            Err(Error::new(ErrorCode::TryAgain, "injected sequence copy failure"))
+        })
+    };
+    let mut retried: Option<Message> = None;
+    // SAFETY: the failed copy retained its item, so the kernel test process cannot block.
+    let retried_copy: Result<(), SleepError> = unsafe {
+        recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |message| {
+            retried = Some(message.clone());
+            Ok(())
+        })
+    };
+
+    match (failed_copy, retried_copy, failed, retried) {
+        (Err(SleepError::Generic(_)), Ok(()), Some(failed), Some(retried)) => {
+            if !expected.matches(&failed) {
+                error!("failed copy selected an unexpected item (type={:?})", failed.message_type);
+                return false;
+            }
+            if !expected.matches(&retried)
+                || retried.message_type != failed.message_type
+                || retried.status != failed.status
+                || retried.payload != failed.payload
+            {
+                error!("retry after a failed copy returned a different item");
+                return false;
+            }
+            true
+        },
+        _ => {
+            error!("injected copy failure was not retried transactionally");
+            false
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Produces a thread-termination race before any receive and drains it through production receive
+/// with a failed copy before every commit. A thread posts a `Wait` request and terminates, a sibling
+/// posts a wait cancellation and terminates, and a later request follows, so IPC and lifecycle
+/// records alternate in both orders. An interrupt raised meanwhile is served by the fairness cursor
+/// without disturbing the order of the message-like class.
+///
+/// # Returns
+///
+/// `true` if every item is delivered once in production order, failed copies retain items, and all
+/// capacity is released, otherwise `false`.
+///
+fn run_thread_lifecycle_sequence() -> bool {
+    const WAIT_STATUS: i32 = 3055;
+    const CANCEL_STATUS: i32 = 3056;
+    const LATER_STATUS: i32 = 3057;
+    const INTERRUPT_BIT: usize = 1;
+    const MESSAGE_LIKE_CLASS: usize = 2;
+
+    let waiter: ProcessIdentifier = ProcessIdentifier::from(3055);
+    let first: ThreadTerminationInfo =
+        ThreadTerminationInfo::new(waiter, ThreadIdentifier::from(3055), ExitStatus::ok());
+    let second: ThreadTerminationInfo = ThreadTerminationInfo::new(
+        waiter,
+        ThreadIdentifier::from(3056),
+        ExitStatus::from(ErrorCode::Interrupted),
+    );
+    let buffered_before: usize = global_buffered_messages();
+    let lifecycle_before: Option<usize> = global_lifecycle_capacity_in_use();
+
+    if !post_global_ipc_with_status(WAIT_STATUS)
+        || !queue_global_thread_termination(first)
+        || !post_global_ipc_with_status(CANCEL_STATUS)
+        || !queue_global_thread_termination(second)
+        || !post_global_ipc_with_status(LATER_STATUS)
+    {
+        return false;
+    }
+    match EventManager::get().and_then(|manager| manager.try_borrow_mut()) {
+        Ok(mut inner) => {
+            inner.interrupt_ownership[INTERRUPT_BIT] = Some(ProcessIdentifier::KERNEL);
+            push_interrupt(&mut inner, INTERRUPT_BIT);
+        },
+        Err(error) => {
+            error!("failed to raise sequence interrupt (error={error:?})");
+            return false;
+        },
+    }
+
+    // Start at the message-like class. Committing it moves the cursor to interrupts, which are
+    // served once, and the remaining message-like items then drain in production order.
+    // SAFETY: the integration test owns the running kernel process state.
+    unsafe { ProcessManager::set_delivery_cursor(MESSAGE_LIKE_CLASS) };
+    let expected: [ExpectedDelivery; 6] = [
+        ExpectedDelivery::Ipc(WAIT_STATUS),
+        ExpectedDelivery::Interrupt,
+        ExpectedDelivery::ThreadTermination(first),
+        ExpectedDelivery::Ipc(CANCEL_STATUS),
+        ExpectedDelivery::ThreadTermination(second),
+        ExpectedDelivery::Ipc(LATER_STATUS),
+    ];
+    let mut passed: bool = expected.iter().all(receive_after_failed_copy);
+
+    match receive_global_message() {
+        Ok(None) => {},
+        Ok(Some(message)) => {
+            error!("sequence delivered an extra item (type={:?})", message.message_type);
+            passed = false;
+        },
+        Err(error) => {
+            error!("sequence drain check failed (error={error:?})");
+            passed = false;
+        },
+    }
+    if global_buffered_messages() != buffered_before
+        || global_lifecycle_capacity_in_use() != lifecycle_before
+    {
+        error!("sequence left buffered messages or lifecycle capacity behind");
+        passed = false;
+    }
+    match EventManager::get().and_then(|manager| manager.try_borrow_mut()) {
+        Ok(mut inner) => {
+            if !inner.pending_interrupts[INTERRUPT_BIT].is_empty() {
+                error!("sequence interrupt was not committed");
+                passed = false;
+            }
+            inner.pending_interrupts[INTERRUPT_BIT].clear();
+            inner.interrupt_ownership[INTERRUPT_BIT] = None;
+        },
+        Err(error) => {
+            error!("failed to clean up sequence interrupt (error={error:?})");
+            passed = false;
+        },
+    }
+
+    passed
 }
 
 ///
@@ -1880,7 +2116,92 @@ fn test_ordered_delivery_production_path() -> bool {
     passed && cleanup_passed
 }
 
+/// Exercises a thread-termination race sequence on the production receive path.
+fn test_thread_lifecycle_sequence_production_path() -> bool {
+    // Install a global event manager without registering hardware handlers, as the ordered-delivery
+    // test does. The manager is removed after all ownership guards are dropped.
+    unsafe {
+        MANAGER = Some(EventManager(RefCell::new(make_inner())));
+    }
+    // SAFETY: the integration test owns the running kernel process state.
+    let cursor_before: usize = unsafe { ProcessManager::delivery_cursor() };
+    let scheduling: Event = Event::Scheduling(SchedulingEvent::ThreadTermination);
+
+    let mut capability_set: bool = false;
+    let mut registered: bool = false;
+    // SAFETY: process-manager access is synchronized during single-threaded kernel startup.
+    let passed: bool = match unsafe { ProcessManager::get_mut() }.capctl(
+        ProcessIdentifier::KERNEL,
+        Capability::ProcessManagement,
+        true,
+    ) {
+        Ok(()) => {
+            capability_set = true;
+            // Registering any scheduling event claims the whole lifecycle class.
+            if matches!(
+                crate::event::evctrl(
+                    ProcessIdentifier::KERNEL,
+                    u32::from(scheduling),
+                    u32::from(EventCtrlRequest::Register),
+                ),
+                KcallResult::Success(_)
+            ) {
+                registered = true;
+                run_thread_lifecycle_sequence()
+            } else {
+                error!("failed to register thread lifecycle ownership");
+                false
+            }
+        },
+        Err(error) => {
+            error!("failed to grant process-management capability (error={error:?})");
+            false
+        },
+    };
+
+    let mut cleanup_passed: bool = true;
+    if registered {
+        if matches!(
+            crate::event::evctrl(
+                ProcessIdentifier::KERNEL,
+                u32::from(scheduling),
+                u32::from(EventCtrlRequest::Unregister),
+            ),
+            KcallResult::Success(_)
+        ) {
+            registered = false;
+        } else {
+            error!("failed to unregister thread lifecycle ownership");
+            cleanup_passed = false;
+        }
+    }
+    if capability_set {
+        // SAFETY: process-manager access is synchronized during single-threaded kernel startup.
+        if let Err(error) = unsafe { ProcessManager::get_mut() }.capctl(
+            ProcessIdentifier::KERNEL,
+            Capability::ProcessManagement,
+            false,
+        ) {
+            error!("failed to revoke test process-management capability (error={error:?})");
+            cleanup_passed = false;
+        }
+    }
+    // SAFETY: the integration test owns the running kernel process state.
+    unsafe { ProcessManager::set_delivery_cursor(cursor_before) };
+
+    // Remove the test manager only after every ownership guard has been released.
+    if !registered {
+        unsafe {
+            MANAGER = None;
+        }
+    }
+
+    passed && cleanup_passed
+}
+
 /// Runs production-path ordered-delivery tests after process-manager initialization.
 pub fn test_delivery_integration() -> bool {
-    run_test!(test_ordered_delivery_production_path)
+    let mut passed: bool = run_test!(test_ordered_delivery_production_path);
+    passed &= run_test!(test_thread_lifecycle_sequence_production_path);
+    passed
 }

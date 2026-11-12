@@ -147,6 +147,49 @@ impl ProcessManager {
         self.delivery.release_termination(credit);
         Ok(())
     }
+
+    ///
+    /// # Description
+    ///
+    /// Queues a thread-termination record through the same reservation, creation commit, and
+    /// termination commit steps that a production thread follows.
+    ///
+    /// # Parameters
+    ///
+    /// - `info`: Thread-termination record to queue.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if thread lifecycle capacity is exhausted.
+    ///
+    pub(crate) fn queue_test_thread_termination(
+        &mut self,
+        info: ThreadTerminationInfo,
+    ) -> Result<(), Error> {
+        let reservation: ThreadLifecycleReservation =
+            self.delivery.try_reserve_thread_creation()?;
+        let credit: ThreadLifecycleTerminationCredit =
+            self.delivery.commit_thread_creation(reservation);
+        self.delivery.commit_thread_termination(credit, info);
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reports the lifecycle capacity that is reserved or held by undelivered records.
+    ///
+    /// # Returns
+    ///
+    /// The number of lifecycle slots in use, or [`None`] if accounting overflows.
+    ///
+    pub(crate) fn lifecycle_capacity_in_use(&self) -> Option<usize> {
+        self.delivery.capacity_in_use()
+    }
 }
 
 //==================================================================================================
