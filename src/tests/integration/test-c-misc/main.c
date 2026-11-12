@@ -59,6 +59,7 @@ int main(int argc, const char *argv[])
     test_usleep();
 #endif
     test_times();
+    test_getrlimit();
     test_uname();
     test_gethostname();
     test_getenv();

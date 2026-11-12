@@ -68,6 +68,9 @@ extern void test_getgid(void);
 // Tests whether `gethostname()` works.
 extern void test_gethostname(void);
 
+// Tests whether we can get resource limits with `getrlimit()`.
+extern void test_getrlimit(void);
+
 // Tests whether we can the user ID of the calling process with `getuid()`.
 extern void test_getuid(void);
 
