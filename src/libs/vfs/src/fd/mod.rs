@@ -71,6 +71,7 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
+use ::config::fds::MAX_OPEN_FDS;
 use ::core::sync::atomic::Ordering;
 use ::fat32::{
     Fat32Error,
@@ -228,13 +229,6 @@ pub(crate) fn entry_arc(fd: c_int) -> Result<OpenFile, Fat32Error> {
         .map(|slot| slot.file.clone())
         .ok_or(Fat32Error::InvalidFd)
 }
-
-/// Upper bound (exclusive) of the flat per-process descriptor namespace.
-///
-/// The allocator hands out the lowest free descriptor in `[0, MAX_OPEN_FDS)`. Every object —
-/// sockets, regular files, pipes, and console streams — draws from this single range, so there is
-/// no carved-out sub-range. Exhausting it yields [`Fat32Error::TooManyOpenFiles`].
-const MAX_OPEN_FDS: c_int = 2048;
 
 /// Allocates a new file descriptor for the given handle in the current process.
 ///

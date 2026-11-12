@@ -1680,6 +1680,8 @@ dependencies = [
 name = "libc_sys_resource"
 version = "0.24.125"
 dependencies = [
+ "config",
+ "static_assert",
  "sys",
  "sysapi",
  "syscall",
