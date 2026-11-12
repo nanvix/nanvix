@@ -12,14 +12,28 @@ use ::libc::{
     CPU_SET,
     CPU_ZERO,
 };
-#[cfg(unix)]
 use ::log::error;
 use ::serde::Deserialize;
 #[cfg(unix)]
 use ::std::mem;
-#[cfg(unix)]
-use ::std::str::FromStr;
 use anyhow::Result;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Number of CPUs that a CPU mask can refer to. CPU indices in a CPU mask must be less than this
+/// value, which is the number of CPUs that the CPU set of the GNU C Library can hold
+/// (`CPU_SETSIZE`).
+///
+pub const MAX_CPUS: usize = 1024;
+
+// Every CPU that a CPU mask can refer to must fit in the CPU set that pins threads.
+#[cfg(unix)]
+const _: () = assert!(MAX_CPUS <= 8 * mem::size_of::<cpu_set_t>());
 
 //==================================================================================================
 // Structures
@@ -36,66 +50,168 @@ impl HwLoc {
     }
 }
 
-/// Parses a CPU mask string (e.g., "0-3,5,7-8") into a Vec of CPU indices.
-#[cfg(unix)]
-fn parse_cpu_mask(mask: &str) -> Result<Vec<usize>> {
-    let mut cpus = Vec::new();
-    for part in mask.split(',') {
-        if let Some((start, end)) = part.split_once('-') {
-            let start = usize::from_str(start.trim())
-                .map_err(|_| format!("Invalid start: {part}"))
-                .unwrap();
-            let end = usize::from_str(end.trim())
-                .map_err(|_| format!("Invalid end: {part}"))
-                .unwrap();
-            cpus.extend(start..=end);
-        } else {
-            let cpu = usize::from_str(part.trim())
-                .map_err(|_| format!("Invalid CPU: {part}"))
-                .unwrap();
-            cpus.push(cpu);
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Parses a CPU mask into the indices of the CPUs that it lists.
+///
+/// A CPU mask is a comma-separated list of entries, each of which is either a CPU index or an
+/// inclusive range of CPU indices (e.g., `0-3,5,7-8`). Whitespace around entries and range bounds
+/// is ignored.
+///
+/// # Parameters
+///
+/// - `mask`: CPU mask.
+///
+/// # Returns
+///
+/// On success, returns the indices of the CPUs that the mask lists, in the order in which they
+/// appear. On failure, returns an error that describes the first malformed entry: an empty
+/// entry, an entry that is neither a CPU index nor a range of CPU indices, a range whose start is
+/// greater than its end, or a CPU index that is not less than [`MAX_CPUS`].
+///
+pub fn parse_cpu_mask(mask: &str) -> Result<Vec<usize>> {
+    let mut cpus: Vec<usize> = Vec::new();
+    for entry in mask.split(',') {
+        if entry.trim().is_empty() {
+            anyhow::bail!("invalid CPU mask entry {entry:?}: entry is empty");
         }
+        let (start, end): (usize, usize) = match entry.split_once('-') {
+            Some((start, end)) => (parse_cpu_index(entry, start)?, parse_cpu_index(entry, end)?),
+            None => {
+                let cpu: usize = parse_cpu_index(entry, entry)?;
+                (cpu, cpu)
+            },
+        };
+        if start > end {
+            anyhow::bail!(
+                "invalid CPU mask entry {entry:?}: range start is greater than range end"
+            );
+        }
+        cpus.extend(start..=end);
     }
     Ok(cpus)
 }
 
-/// Pins the current thread to a given CPU set parsed from a mask string.
+///
+/// # Description
+///
+/// Parses a CPU index of a CPU mask entry.
+///
+/// # Parameters
+///
+/// - `entry`: CPU mask entry that contains the CPU index.
+/// - `index`: CPU index.
+///
+/// # Returns
+///
+/// On success, returns the CPU index. On failure, returns an error: `index` is not a CPU index,
+/// or it is not less than [`MAX_CPUS`].
+///
+fn parse_cpu_index(entry: &str, index: &str) -> Result<usize> {
+    let index: &str = index.trim();
+    let cpu: usize = index.parse().map_err(|_| {
+        anyhow::anyhow!("invalid CPU mask entry {entry:?}: {index:?} is not a CPU index")
+    })?;
+    if cpu >= MAX_CPUS {
+        anyhow::bail!(
+            "invalid CPU mask entry {entry:?}: CPU index {cpu} is out of range (maximum is {})",
+            MAX_CPUS - 1
+        );
+    }
+    Ok(cpu)
+}
+
+///
+/// # Description
+///
+/// Pins the calling thread to a set of CPUs.
+///
+/// # Parameters
+///
+/// - `cpus`: Indices of the CPUs. Each index must be less than [`MAX_CPUS`].
+///
+/// # Returns
+///
+/// On success, returns empty. On failure, returns an error that describes why the CPU affinity of
+/// the calling thread could not be changed.
+///
 #[cfg(unix)]
-fn pin_current_thread_to_mask(mask: &str) -> Result<()> {
-    match parse_cpu_mask(mask) {
-        Ok(cpus) => unsafe {
-            let mut set: cpu_set_t = mem::zeroed();
-            CPU_ZERO(&mut set);
-            for cpu in cpus {
-                CPU_SET(cpu, &mut set);
-            }
-            let ret = sched_setaffinity(0, mem::size_of::<cpu_set_t>(), &set);
-            if ret != 0 {
-                error!(
-                    "Failed to set CPU affinity for thread: {}",
-                    std::io::Error::last_os_error()
-                );
-                return Err(anyhow::anyhow!("Failed to set CPU affinity for thread"));
-            }
-
-            Ok(())
-        },
-        Err(e) => {
-            error!("Failed to parse CPU mask '{mask}': {e}");
-            Err(anyhow::anyhow!("Failed to parse CPU mask"))
-        },
+fn pin_current_thread(cpus: &[usize]) -> Result<()> {
+    // SAFETY: `cpu_set_t` is a plain bit array, for which all zeroes is a valid (empty) value.
+    let mut set: cpu_set_t = unsafe { mem::zeroed() };
+    // SAFETY: `set` is a valid CPU set, and every CPU index is less than `MAX_CPUS`, which fits in
+    // the CPU set, as asserted at compile time.
+    unsafe {
+        CPU_ZERO(&mut set);
+        for cpu in cpus {
+            CPU_SET(*cpu, &mut set);
+        }
     }
+    // SAFETY: `set` is a valid CPU set of the given size, and pid 0 refers to the calling thread.
+    let ret: ::libc::c_int = unsafe { sched_setaffinity(0, mem::size_of::<cpu_set_t>(), &set) };
+    if ret != 0 {
+        anyhow::bail!("{}", ::std::io::Error::last_os_error());
+    }
+    Ok(())
 }
 
-/// This method pins the client (running thread) to a pre-defined CPU core.
+///
+/// # Description
+///
+/// Pins the calling thread to a set of CPUs. CPU pinning is not supported on this platform, so
+/// this function leaves the CPU affinity of the calling thread unchanged.
+///
+/// # Parameters
+///
+/// - `cpus`: Indices of the CPUs (unused).
+///
+/// # Returns
+///
+/// This function always succeeds.
+///
+#[cfg(not(unix))]
+fn pin_current_thread(cpus: &[usize]) -> Result<()> {
+    let _ = cpus;
+    Ok(())
+}
+
+///
+/// # Description
+///
+/// Pins the calling thread to the CPUs that a CPU mask lists.
+///
+/// Threads that the calling thread creates afterwards inherit its CPU affinity, so pinning the
+/// main thread of a program before it creates other threads pins the whole program.
+///
+/// CPU pinning is only supported on Unix hosts. On other hosts, the CPU mask is still validated,
+/// but the CPU affinity of the calling thread is left unchanged.
+///
+/// # Parameters
+///
+/// - `mask`: CPU mask (see [`parse_cpu_mask()`]).
+///
+/// # Returns
+///
+/// On success, returns empty. On failure, returns an error: the CPU mask is malformed, or the CPU
+/// affinity of the calling thread could not be changed.
+///
 pub fn pin_main_thread(mask: String) -> Result<()> {
-    #[cfg(unix)]
-    {
-        pin_current_thread_to_mask(&mask)
+    if let Err(error) = parse_cpu_mask(&mask).and_then(|cpus| pin_current_thread(&cpus)) {
+        let reason: String = format!("failed to pin thread to CPU mask {mask:?}: {error}");
+        error!("pin_main_thread(): {reason}");
+        anyhow::bail!(reason);
     }
-    #[cfg(not(unix))]
-    {
-        let _ = mask;
-        Ok(())
-    }
+    Ok(())
 }
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests;
