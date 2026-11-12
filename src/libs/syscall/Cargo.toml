@@ -19,6 +19,7 @@ sys = { workspace = true }
 config = { workspace = true }
 cfg-if = { workspace = true }
 elf = { workspace = true, optional = true, features = ["relocation"] }
+fs-core = { workspace = true, optional = true }
 goblin = { workspace = true, optional = true, features = [
     "elf32",
     "elf64",
@@ -51,7 +52,7 @@ syscall = [
     "dep:libc_stdlib",
 ]
 std = []
-dlfcn = ["dep:sysalloc", "dep:elf", "dep:goblin"]
+dlfcn = ["dep:sysalloc", "dep:elf", "dep:fs-core", "dep:goblin"]
 rustc-dep-of-std = [
     "core",
     "alloc",

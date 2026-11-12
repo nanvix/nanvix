@@ -1,7 +1,18 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! Ordered, symlink-aware traversal without prescribing path representation or filesystem access.
+//! Path algorithms.
+//!
+//! [`walk`] performs ordered, symlink-aware traversal without prescribing path representation or
+//! filesystem access. [`normalize`] and [`normalize_lexically`] rewrite path spellings without
+//! accessing a filesystem.
+
+mod normalize;
+
+pub use self::normalize::{
+    normalize,
+    normalize_lexically,
+};
 
 /// The three component actions distinguished by POSIX pathname resolution.
 ///

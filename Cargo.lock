@@ -782,6 +782,7 @@ name = "fs-core"
 version = "0.24.126"
 dependencies = [
  "compiler_builtins",
+ "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
 ]
 
@@ -3079,6 +3080,7 @@ dependencies = [
  "compiler_builtins",
  "config",
  "elf",
+ "fs-core",
  "goblin",
  "libc_stdlib",
  "nvx",
@@ -4354,6 +4356,7 @@ dependencies = [
  "error",
  "fat32",
  "fatfs",
+ "fs-core",
  "spin",
  "sys",
  "sysapi",

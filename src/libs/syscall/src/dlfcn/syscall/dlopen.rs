@@ -48,12 +48,13 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
 
     // Resolve bare library names (e.g., "libfoo.so") to a canonical path
     // (e.g., "lib/libfoo.so") using the configured search directories.
-    // Paths that already contain a separator are passed through with only a
-    // leading "./" stripped; a leading "/" is preserved so that absolute
-    // paths stay absolute and resolve against the filesystem root regardless
-    // of the caller's CWD. As a consequence, "/lib/libc.so" and
-    // "lib/libc.so" are distinct keys in the already-loaded-library lookup
-    // below (matching the as-supplied path rather than a canonical form).
+    // Paths that already contain a separator are only normalized, so that
+    // equivalent spellings such as "./lib//libfoo.so" and "lib/libfoo.so"
+    // share one key in the already-loaded-library lookup below. A leading "/"
+    // is preserved so that absolute paths stay absolute and resolve against
+    // the filesystem root regardless of the caller's CWD. As a consequence,
+    // "/lib/libc.so" and "lib/libc.so" remain distinct keys, as do spellings
+    // that differ in ".." components, which normalization keeps.
     //
     // A direct `dlopen()` has no loading-library context, so no `DT_RUNPATH`
     // entries are supplied here; only the configured default search paths are

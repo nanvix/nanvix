@@ -88,10 +88,9 @@ static GLOBAL_FINI_ONCE: Once = Once::new();
 /// Resolves a library filename to a canonical path.
 ///
 /// If `filename` contains a path separator (`/`), it is treated as an explicit
-/// path (absolute or relative with directory component).  Only a leading
-/// `./` is stripped (`./foo` is equivalent to `foo` for `openat()`
-/// purposes); the leading `/` of an absolute path is preserved as-is.
-/// This matches Linux behavior, where absolute and relative paths bypass
+/// path (absolute or relative with directory component) and is only
+/// normalized by [`canonicalize`], which keeps the leading `/` of an absolute
+/// path. This matches Linux behavior, where absolute and relative paths bypass
 /// `LD_LIBRARY_PATH` and are passed straight through to `open()`.
 ///
 /// If `filename` is a bare name (no `/`), the function tries each directory in
@@ -134,19 +133,7 @@ pub(super) fn resolve_library_path(filename: &str, runpaths: Option<&[String]>) 
     // but do NOT search configured directories — matching Linux behavior
     // where absolute/relative paths bypass `LD_LIBRARY_PATH`.
     if filename.contains('/') {
-        // `./foo` is equivalent to `foo` for `openat()` purposes, so strip
-        // a leading `./` if present.  Do NOT strip a leading `/` — that
-        // would convert an absolute path into a relative one and break
-        // resolution when CWD != `/` (see doc comment above).
-        let normalized: &str = match filename.strip_prefix("./") {
-            Some(rest) => rest.trim_start_matches('/'),
-            None => filename,
-        };
-        // Guard against pathological input like `./` becoming empty.
-        if normalized.is_empty() {
-            return String::from(filename);
-        }
-        return String::from(normalized);
+        return canonicalize(filename);
     }
 
     // Bare library name (no path separator) — search runpaths first, then
@@ -160,10 +147,10 @@ pub(super) fn resolve_library_path(filename: &str, runpaths: Option<&[String]>) 
                 // branch above so callers that compare against already-
                 // loaded library names (which are stored canonically)
                 // don't see duplicates like `"./libfoo.so"` vs
-                // `"libfoo.so"`. A single leading "./" is stripped, but a
-                // leading "/" is preserved so that an absolute DT_RUNPATH
-                // entry (e.g. `"/usr/lib"`) keeps resolving against the
-                // filesystem root rather than the caller's CWD.
+                // `"libfoo.so"`. Canonicalization keeps a leading "/" so
+                // that an absolute DT_RUNPATH entry (e.g. `"/usr/lib"`)
+                // keeps resolving against the filesystem root rather than
+                // the caller's CWD.
                 let canonical: String = canonicalize(&candidate);
                 ::syslog::debug!(
                     "resolve_library_path(): resolved '{}' via DT_RUNPATH -> '{}'",
@@ -192,23 +179,20 @@ pub(super) fn resolve_library_path(filename: &str, runpaths: Option<&[String]>) 
     String::from(filename)
 }
 
-/// Normalizes a resolved candidate path to the canonical form used throughout
-/// the dlfcn layer (e.g. `"lib/libc.so"`), matching the explicit-path branch of
-/// [`resolve_library_path`]: a single leading `./` is stripped, but a leading
-/// `/` is preserved so that absolute paths (such as those produced from an
-/// absolute `DT_RUNPATH` entry) stay absolute and resolve against the
-/// filesystem root regardless of the caller's CWD. Returns the input unchanged
-/// if normalization would yield an empty string.
+/// Normalizes a library path to the canonical form used throughout the dlfcn
+/// layer (e.g. `"lib/libc.so"`), so that equivalent spellings such as
+/// `"./lib//libc.so"` share one entry in the already-loaded-library lookup.
+///
+/// The canonical path is also what `open()` receives, so only rewrites that
+/// keep the file it names are applied (see [`fs_core::path::normalize`]):
+/// redundant separators and `.` components are removed, but a leading `/`
+/// keeps an absolute path resolving against the filesystem root regardless of
+/// the caller's CWD. `..` components are kept, because on a hostfs mount the
+/// name before one may be a symbolic link, whose parent only the host can
+/// resolve. A trailing separator is kept so that opening the path still fails
+/// with `ENOTDIR`, as a library is not a directory.
 fn canonicalize(path: &str) -> String {
-    let stripped: &str = match path.strip_prefix("./") {
-        Some(rest) => rest.trim_start_matches('/'),
-        None => path,
-    };
-    if stripped.is_empty() {
-        String::from(path)
-    } else {
-        String::from(stripped)
-    }
+    ::fs_core::path::normalize(path)
 }
 
 /// Joins a directory and filename without introducing duplicate separators.
