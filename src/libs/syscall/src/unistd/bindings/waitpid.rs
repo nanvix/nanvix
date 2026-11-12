@@ -40,9 +40,11 @@ use ::syslog::trace_syscall;
 ///   "any child of the caller" rather than selecting by process group.
 /// - Job control is not supported, so `WUNTRACED` and `WCONTINUED` are accepted for source
 ///   compatibility but have no effect.
-/// - POSIX signals are not supported, so `WIFSIGNALED`/`WTERMSIG` never report a signal death; every
-///   reaped child appears as a normal exit.
-/// - A blocking wait cannot be interrupted by a signal, so `EINTR` is never returned.
+/// - Signal deaths are not reported: a child that a signal terminates is reaped as a normal exit with
+///   an `EINTR` status, so `WIFSIGNALED`/`WTERMSIG` never report a signal death.
+/// - A blocking wait that a caught signal interrupts is cancelled and fails with `EINTR`, unless the
+///   handler was installed with `SA_RESTART`, which resumes the wait. A child that terminates before
+///   the cancellation takes effect is reaped instead.
 ///
 /// # Safety
 ///
