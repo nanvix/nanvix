@@ -41,6 +41,8 @@ directory. Pass `-bin-dir <dir>` to load it from a different directory.
   - [Shutting Down the Server](#shutting-down-the-server)
   - [HTTP API Reference](#http-api-reference)
   - [HTTP Error Codes](#http-error-codes)
+- [Configuration File](#configuration-file)
+  - [Pinning nanvixd to CPUs](#pinning-nanvixd-to-cpus)
 - [Logging](#logging)
 - [Expert Mode: Direct User VM](#expert-mode-direct-user-vm)
   - [Recognised Kernel Arguments](#recognised-kernel-arguments)
@@ -374,6 +376,87 @@ human-readable `message`. Callers should branch on `code` and relay `message` fo
   "message": "failed to deserialize request body: missing field `program`"
 }
 ```
+
+## Configuration File
+
+Instead of passing every option on the command line, you can set options in a TOML file and pass
+it to `nanvixd` with `-config <file>`:
+
+```bash
+./bin/nanvixd.elf -config /etc/nanvix/nanvixd.toml -- ./bin/hello-rust-nostd.elf
+```
+
+Each key sets the command-line option of the same name, without the leading dash and with dashes
+replaced by underscores. Every key is optional:
+
+| Key                     | Type             | Command-Line Option                                            |
+| ----------------------- | ---------------- | -------------------------------------------------------------- |
+| `http_addr`             | String           | `-http-addr <addr>:<port>`                                     |
+| `bin_dir`               | String (path)    | `-bin-dir <dir>`                                               |
+| `console_file`          | String (path)    | `-console-file <file>`                                         |
+| `ramfs`                 | String (path)    | `-ramfs <file>`                                                |
+| `log_dir`               | String (path)    | `-log-dir <dir>`                                               |
+| `log_to_stdout`         | Boolean          | `-log-to-stdout`                                               |
+| `snapshot`              | String (path)    | `-snapshot <path>`                                             |
+| `mount`                 | String (path)    | `-mount <host-dir>`                                            |
+| `kernel_args`           | String           | `-kernel-args <args>`                                          |
+| `gdb_port`              | Integer          | `-gdb-port <port>` (builds with the `gdb` feature)             |
+| `allow_host_networking` | Boolean          | `-allow-host-networking`                                       |
+| `allow_hosts`           | Array of strings | `-allow-host`, once per entry                                  |
+| `block_hosts`           | Array of strings | `-block-host`, once per entry                                  |
+| `gateway_sockaddr`      | String (path)    | `-gateway-sockaddr <path>`                                     |
+| `hwloc`                 | String (path)    | None (see [Pinning nanvixd to CPUs](#pinning-nanvixd-to-cpus)) |
+
+For example, the following file starts `nanvixd` in HTTP mode with an egress allowlist:
+
+```toml
+http_addr = "127.0.0.1:8080"
+log_dir = "/var/log/nanvix"
+allow_host_networking = true
+allow_hosts = ["10.0.0.0/8"]
+block_hosts = ["10.0.0.1"]
+```
+
+`nanvixd` checks the whole file at startup. It fails with an error that names the file if the file
+is not valid TOML, has an unknown key or a value of the wrong type, or sets an invalid option, such
+as a snapshot that does not exist. Relative paths are resolved against the directory that contains
+the configuration file, not against the current working directory.
+
+Options given on the command line take precedence over the configuration file, so you can refine a
+shared file for each run:
+
+- The operation mode and the log destination each count as one option. For example,
+  `-- <program>` runs the program in interactive mode even if the file sets `http_addr`, and
+  `-log-to-stdout` overrides a `log_dir` that the file sets.
+- Host rules accumulate: the `allow_hosts` and `block_hosts` rules of the file apply together with
+  the `-allow-host` and `-block-host` rules given on the command line.
+- Flags that the file turns on, such as `allow_host_networking`, cannot be turned off on the
+  command line.
+
+The containerd shim can pass a configuration file to `nanvixd` through `extra_args` (see
+[Shim Configuration](#shim-configuration)), for example
+`extra_args = ["-config", "/etc/nanvix/nanvixd.toml"]`. The options that the shim sets itself,
+such as `-http-addr` and `-console-file`, take precedence over the file.
+
+### Pinning nanvixd to CPUs
+
+The `hwloc` key names a hardware locality file (`hwloc.json`), the JSON file that
+`nanvix-bench -hwloc` also reads. `nanvixd` pins itself to the CPUs that the `nanvixd_core_str`
+entry of this file lists, so all threads of `nanvixd`, including those that run User VMs, run on
+these CPUs:
+
+```json
+{
+    "client_core_str": "0-9",
+    "nanvixd_core_str": "10-19"
+}
+```
+
+Each entry is a CPU mask: a comma-separated list of CPU indices and inclusive ranges of CPU
+indices, such as `0-3,5`, where each index is less than 1024. Each component reads its own entry
+and ignores the others: `nanvix-bench` pins itself to the CPUs of `client_core_str`, and `nanvixd`
+to those of `nanvixd_core_str`. `nanvixd` fails to start if the file has no `nanvixd_core_str`
+entry or if its CPU mask is malformed.
 
 ## Logging
 

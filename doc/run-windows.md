@@ -31,6 +31,8 @@ directory. Pass `-bin-dir <dir>` to load it from a different directory.
   - [Passing Kernel Arguments](#passing-kernel-arguments)
 - [HTTP Mode](#http-mode)
   - [Limitations vs. Linux HTTP Mode](#limitations-vs-linux-http-mode)
+- [Configuration File](#configuration-file)
+  - [Pinning nanvixd to CPUs](#pinning-nanvixd-to-cpus)
 - [Logging](#logging)
 - [Expert Mode: Direct UserVM](#expert-mode-direct-uservm)
   - [Recognised Kernel Arguments](#recognised-kernel-arguments)
@@ -226,6 +228,81 @@ Linux implementation in the following ways:
   bytes always reach the guest first, so stdin-driven workloads (e.g. `echo`) behave the same as on
   Linux. The framing is internal to the gateway transport; the guest stdout direction remains a raw
   byte stream.
+
+## Configuration File
+
+Instead of passing every option on the command line, you can set options in a TOML file and pass
+it to `nanvixd` with `-config <file>`:
+
+```powershell
+.\bin\nanvixd.exe -config C:\nanvix\nanvixd.toml -- .\bin\hello-rust-nostd.elf
+```
+
+Each key sets the command-line option of the same name, without the leading dash and with dashes
+replaced by underscores. Every key is optional:
+
+| Key                     | Type             | Command-Line Option                                            |
+| ----------------------- | ---------------- | -------------------------------------------------------------- |
+| `http_addr`             | String           | `-http-addr <addr>:<port>`                                     |
+| `bin_dir`               | String (path)    | `-bin-dir <dir>`                                               |
+| `console_file`          | String (path)    | `-console-file <file>`                                         |
+| `ramfs`                 | String (path)    | `-ramfs <file>`                                                |
+| `log_dir`               | String (path)    | `-log-dir <dir>`                                               |
+| `log_to_stdout`         | Boolean          | `-log-to-stdout`                                               |
+| `snapshot`              | String (path)    | `-snapshot <path>`                                             |
+| `mount`                 | String (path)    | `-mount <host-dir>`                                            |
+| `kernel_args`           | String           | `-kernel-args <args>`                                          |
+| `allow_host_networking` | Boolean          | `-allow-host-networking`                                       |
+| `allow_hosts`           | Array of strings | `-allow-host`, once per entry                                  |
+| `block_hosts`           | Array of strings | `-block-host`, once per entry                                  |
+| `gateway_sockaddr`      | String           | `-gateway-sockaddr <path>`                                     |
+| `hwloc`                 | String (path)    | None (see [Pinning nanvixd to CPUs](#pinning-nanvixd-to-cpus)) |
+
+For example, the following file starts `nanvixd` in HTTP mode with an egress allowlist. Write
+Windows paths as TOML literal strings, in single quotes, so that backslashes are not treated as
+escape sequences:
+
+```toml
+http_addr = "127.0.0.1:8080"
+log_dir = 'C:\nanvix\logs'
+allow_host_networking = true
+allow_hosts = ["10.0.0.0/8"]
+block_hosts = ["10.0.0.1"]
+```
+
+`nanvixd` checks the whole file at startup. It fails with an error that names the file if the file
+is not valid TOML, has an unknown key or a value of the wrong type, or sets an invalid option, such
+as a snapshot that does not exist. Relative paths are resolved against the directory that contains
+the configuration file, not against the current working directory. The exception is
+`gateway_sockaddr`, which must be a named pipe path, such as `\\.\pipe\nanvix-gw`, and is used as
+is.
+
+Options given on the command line take precedence over the configuration file, so you can refine a
+shared file for each run:
+
+- The operation mode and the log destination each count as one option. For example,
+  `-- <program>` runs the program in interactive mode even if the file sets `http_addr`, and
+  `-log-to-stdout` overrides a `log_dir` that the file sets.
+- Host rules accumulate: the `allow_hosts` and `block_hosts` rules of the file apply together with
+  the `-allow-host` and `-block-host` rules given on the command line.
+- Flags that the file turns on, such as `allow_host_networking`, cannot be turned off on the
+  command line.
+
+### Pinning nanvixd to CPUs
+
+The `hwloc` key names a hardware locality file (`hwloc.json`), whose `nanvixd_core_str` entry lists
+the CPUs to which `nanvixd` pins itself on Linux:
+
+```json
+{
+    "nanvixd_core_str": "10-19"
+}
+```
+
+CPU pinning is not supported on Windows. `nanvixd` still checks the file and fails to start if it
+has no `nanvixd_core_str` entry or if its CPU mask is malformed, but otherwise it logs a warning
+and runs unpinned. See the Linux guide ([run-linux.md](run-linux.md#pinning-nanvixd-to-cpus)) for
+the format of the file.
 
 ## Logging
 
