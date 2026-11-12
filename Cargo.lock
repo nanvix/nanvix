@@ -3922,6 +3922,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-rust-thread-wait"
+version = "0.24.129"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "config",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "proc",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "test-rust-vfs-test"
 version = "0.24.129"
 dependencies = [
