@@ -93,7 +93,12 @@ async fn main() -> Result<()> {
         None
     };
     if let Some(hwloc) = hwloc {
-        hwloc::pin_main_thread(hwloc.get_client_core_str())?;
+        let Some(client_core_str) = hwloc.get_client_core_str() else {
+            let reason: String = "hwloc file has no client_core_str entry".to_string();
+            error!("{reason}");
+            anyhow::bail!(reason);
+        };
+        hwloc::pin_main_thread(client_core_str.to_string())?;
     }
 
     let mut benchmark: Benchmark = Benchmark {

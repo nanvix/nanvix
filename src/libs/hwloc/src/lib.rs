@@ -39,14 +39,32 @@ const _: () = assert!(MAX_CPUS <= 8 * mem::size_of::<cpu_set_t>());
 // Structures
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Hardware locality configuration, which lists the CPUs on which each Nanvix component runs.
+///
+/// It is loaded from a JSON file, in which each entry is the CPU mask of a component (see
+/// [`parse_cpu_mask()`]). Every entry is optional, because each component reads only its own
+/// entry. Unknown entries, such as those of components that no longer exist, are ignored.
+///
 #[derive(Clone, Debug, Deserialize)]
 pub struct HwLoc {
-    client_core_str: String,
+    /// CPU mask of the benchmark client (`nanvix-bench`).
+    client_core_str: Option<String>,
+    /// CPU mask of the Nanvix Daemon (`nanvixd`), including the User VMs that it runs.
+    nanvixd_core_str: Option<String>,
 }
 
 impl HwLoc {
-    pub fn get_client_core_str(&self) -> String {
-        self.client_core_str.clone()
+    /// Returns the CPU mask of the benchmark client, if any.
+    pub fn get_client_core_str(&self) -> Option<&str> {
+        self.client_core_str.as_deref()
+    }
+
+    /// Returns the CPU mask of the Nanvix Daemon, if any.
+    pub fn get_nanvixd_core_str(&self) -> Option<&str> {
+        self.nanvixd_core_str.as_deref()
     }
 }
 
