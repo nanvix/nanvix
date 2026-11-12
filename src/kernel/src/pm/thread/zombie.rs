@@ -97,6 +97,14 @@ impl ZombieThread {
     ///
     /// Creates a zombie thread from an existing thread state and exit status.
     ///
+    /// This is the only constructor of a zombie thread, and therefore the authoritative kernel
+    /// thread-termination path: every live-to-zombie transition goes through it, whether the thread
+    /// exits, returns from its entry point, is retired by `execv()`, or terminates with its process
+    /// because of an exit, a fatal signal, a privileged termination, or an exception. The returned
+    /// transition carries the thread-termination record together with the capacity reserved when the
+    /// thread was created, and the caller commits that record to the ordered delivery domain.
+    /// Joining, detaching, reaping, and harvesting a zombie never produce a record.
+    ///
     /// # Parameters
     ///
     /// - `pid`: Identifier of the process that owns the thread.

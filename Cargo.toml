@@ -118,6 +118,7 @@ members = [
         "src/tests/integration/test-rust-fork-hostfs",
         "src/tests/integration/test-rust-fork-kcall",
         "src/tests/integration/test-rust-waitpid",
+        "src/tests/integration/test-rust-thread-wait",
         "src/tests/integration/test-rust-kill",
         "src/tests/integration/test-rust-job-control",
         "src/tests/integration/test-rust-linux-app",

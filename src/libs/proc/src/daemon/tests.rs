@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 use super::*;
+use crate::WaitResponseMessage;
 use ::core::mem::ManuallyDrop;
 use ::sys::ExitStatus;
 
@@ -95,6 +96,53 @@ fn lifecycle_message<const N: usize>(
         None,
         message_payload,
     )
+}
+
+/// Builds the thread-termination event that the kernel publishes for `tid` of `pid`.
+fn thread_termination_message(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Message {
+    let info: ThreadTerminationInfo = ThreadTerminationInfo::new(pid, tid, ExitStatus::ok());
+    lifecycle_message(
+        MessageSender::KERNEL,
+        MessageType::ThreadTerminationEvent,
+        info.to_ne_bytes(),
+    )
+}
+
+/// Builds a wait for any child that `tid` of `waiter` blocked with `request_id`.
+fn blocked_waiter(
+    waiter: ProcessIdentifier,
+    tid: ThreadIdentifier,
+    request_id: RequestIdentifier,
+) -> BlockedWaiter {
+    BlockedWaiter {
+        waiter,
+        selector: WaitSelector::Any,
+        response_context: ResponseContext::new(MessageSender::new(waiter, tid), request_id),
+    }
+}
+
+/// Returns the thread identifier at `offset` from `base`.
+fn thread_at(base: i32, offset: usize) -> ThreadIdentifier {
+    let offset: i32 = i32::try_from(offset).expect("thread offset should fit in an i32");
+    ThreadIdentifier::from(base + offset)
+}
+
+/// Builds a blocking wait for `child`.
+fn wait_for_child(child: ProcessIdentifier) -> WaitMessage {
+    WaitMessage::new(WaitTarget::Pid(child), 0)
+}
+
+/// Decodes the error code carried by an immediate wait reply.
+fn wait_reply_error(reply: &Message) -> i32 {
+    let system: SystemMessage =
+        SystemMessage::from_bytes(reply.payload).expect("wait reply should be a system message");
+    let process: ProcessManagementMessage = ProcessManagementMessage::from_bytes(system.payload)
+        .expect("wait reply should be a process-management message");
+    assert!(
+        matches!(process.header, ProcessManagementMessageHeader::WaitResponse),
+        "immediate reply should be a wait response"
+    );
+    WaitResponseMessage::from_bytes(process.payload).error
 }
 
 #[test]
@@ -750,6 +798,162 @@ fn wait_cancel_removes_only_exact_request() {
     assert!(daemon.handle_wait_cancel(parent, first_tid, first_id));
     assert_eq!(daemon.blocked.len(), 1);
     assert_eq!(daemon.blocked[0].response_context.request_id, second_id);
+}
+
+#[test]
+fn wait_cancellation_and_thread_termination_converge_in_either_order() {
+    let parent: ProcessIdentifier = ProcessIdentifier::from(10);
+    let terminated_tid: ThreadIdentifier = ThreadIdentifier::from(11);
+    let sibling_tid: ThreadIdentifier = ThreadIdentifier::from(12);
+    let request_id: RequestIdentifier = RequestIdentifier::from_raw(7);
+
+    for cancel_first in [true, false] {
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(parent, Some(process_identity(1000)))]);
+        daemon
+            .blocked
+            .push(blocked_waiter(parent, terminated_tid, request_id));
+        // The sibling reuses the request identifier so that only the thread disambiguates them.
+        let sibling: BlockedWaiter = blocked_waiter(parent, sibling_tid, request_id);
+        let sibling_context: ResponseContext = sibling.response_context;
+        daemon.blocked.push(sibling);
+
+        let cancelled: bool = if cancel_first {
+            let cancelled: bool = daemon.handle_wait_cancel(parent, terminated_tid, request_id);
+            let status: Option<i32> =
+                daemon.handle_message(thread_termination_message(parent, terminated_tid));
+            assert_eq!(status, None, "thread termination should not trigger shutdown");
+            cancelled
+        } else {
+            let status: Option<i32> =
+                daemon.handle_message(thread_termination_message(parent, terminated_tid));
+            assert_eq!(status, None, "thread termination should not trigger shutdown");
+            daemon.handle_wait_cancel(parent, terminated_tid, request_id)
+        };
+
+        assert_eq!(
+            cancelled, cancel_first,
+            "cancellation should win only when it precedes thread termination"
+        );
+        assert_eq!(daemon.blocked.len(), 1, "both orders should remove exactly one wait");
+        assert_eq!(daemon.blocked[0].response_context, sibling_context);
+    }
+}
+
+#[test]
+fn terminated_wait_threads_do_not_exhaust_waiter_capacity() {
+    const FIRST_CYCLE_TID: i32 = 100;
+    const FIRST_LIVE_TID: i32 = 1000;
+    let parent: ProcessIdentifier = ProcessIdentifier::from(10);
+    let child: ProcessIdentifier = ProcessIdentifier::from(11);
+    let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+        (parent, Some(process_identity(1000))),
+        (child, Some(process_identity(1000))),
+    ]);
+    daemon
+        .processes
+        .get_mut(&parent)
+        .expect("parent record should exist")
+        .children
+        .push(child);
+
+    // Each cycle blocks one thread on the live child and then terminates that thread, as a thread
+    // interrupted in waitpid() does when it exits before the child terminates.
+    for cycle in 0..(2 * MAX_BLOCKED_WAITERS) {
+        let tid: ThreadIdentifier = thread_at(FIRST_CYCLE_TID, cycle);
+        let context: ResponseContext =
+            ResponseContext::new(MessageSender::new(parent, tid), RequestIdentifier::from_raw(1));
+        let reply: Option<Message> = daemon
+            .handle_wait(parent, context, wait_for_child(child))
+            .expect("blocking wait should be accepted");
+        assert!(reply.is_none(), "live child should block the wait in cycle {cycle}");
+        let status: Option<i32> = daemon.handle_message(thread_termination_message(parent, tid));
+        assert_eq!(status, None, "thread termination should not trigger shutdown");
+        assert!(daemon.blocked.is_empty(), "terminated thread left its wait in cycle {cycle}");
+    }
+
+    // Terminated threads left no residue, so live threads can still fill every waiter slot.
+    for slot in 0..MAX_BLOCKED_WAITERS {
+        let context: ResponseContext = ResponseContext::new(
+            MessageSender::new(parent, thread_at(FIRST_LIVE_TID, slot)),
+            RequestIdentifier::from_raw(1),
+        );
+        let reply: Option<Message> = daemon
+            .handle_wait(parent, context, wait_for_child(child))
+            .expect("blocking wait should be accepted");
+        assert!(reply.is_none(), "waiter slot {slot} should be available");
+    }
+    let overflow_context: ResponseContext = ResponseContext::new(
+        MessageSender::new(parent, thread_at(FIRST_LIVE_TID, MAX_BLOCKED_WAITERS)),
+        RequestIdentifier::from_raw(1),
+    );
+    let overflow: Message = daemon
+        .handle_wait(parent, overflow_context, wait_for_child(child))
+        .expect("overflowing wait should be handled")
+        .expect("overflowing wait should be answered immediately");
+    assert_eq!(wait_reply_error(&overflow), ErrorCode::NoBufferSpace.get());
+}
+
+#[test]
+fn process_exit_after_thread_terminations_cleans_every_waiting_thread() {
+    let exiting: ProcessIdentifier = ProcessIdentifier::from(10);
+    let survivor: ProcessIdentifier = ProcessIdentifier::from(20);
+    let tids: [ThreadIdentifier; 3] = [
+        ThreadIdentifier::from(11),
+        ThreadIdentifier::from(12),
+        ThreadIdentifier::from(13),
+    ];
+    let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+        (exiting, Some(process_identity(1000))),
+        (survivor, Some(process_identity(1000))),
+    ]);
+    for (index, tid) in tids.iter().enumerate() {
+        let request_id: u32 = u32::try_from(index + 1).expect("request identifier should fit");
+        daemon
+            .blocked
+            .push(blocked_waiter(exiting, *tid, RequestIdentifier::from_raw(request_id)));
+    }
+    // A nested signal handler may block a second wait on the same thread.
+    daemon
+        .blocked
+        .push(blocked_waiter(exiting, tids[0], RequestIdentifier::from_raw(99)));
+    let survivor_waiter: BlockedWaiter =
+        blocked_waiter(survivor, ThreadIdentifier::from(21), RequestIdentifier::from_raw(1));
+    let survivor_context: ResponseContext = survivor_waiter.response_context;
+    daemon.blocked.push(survivor_waiter);
+
+    // On a whole-process exit the kernel publishes every thread termination before the process
+    // termination, so each thread event must release that thread's waits on its own.
+    for tid in tids {
+        let status: Option<i32> = daemon.handle_message(thread_termination_message(exiting, tid));
+        assert_eq!(status, None, "thread termination should not trigger shutdown");
+        assert!(
+            !daemon
+                .blocked
+                .iter()
+                .any(|waiter| waiter.waiter == exiting
+                    && waiter.response_context.receiver.tid == tid),
+            "thread termination left a wait owned by the terminated thread"
+        );
+    }
+    assert_eq!(daemon.blocked.len(), 1, "only the surviving process should still be waiting");
+
+    let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
+        exiting,
+        ExitStatus::ok(),
+        ProcessIdentifier::KERNEL,
+        ProcessRole::User,
+    );
+    let status: Option<i32> = daemon.handle_message(lifecycle_message(
+        MessageSender::KERNEL,
+        MessageType::ProcessTerminationEvent,
+        info.to_ne_bytes(),
+    ));
+
+    assert_eq!(status, None, "user process termination should not trigger shutdown");
+    assert!(!daemon.processes.contains_key(&exiting), "unreapable process should be dropped");
+    assert_eq!(daemon.blocked.len(), 1, "process termination should keep unrelated waits");
+    assert_eq!(daemon.blocked[0].response_context, survivor_context);
 }
 
 #[test]

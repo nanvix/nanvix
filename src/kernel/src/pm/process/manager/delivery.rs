@@ -462,6 +462,33 @@ pub(super) struct LifecycleDisposal {
 /// lifecycle capacity, allocates the sequence number stamped on every committed item, holds records
 /// in production-sequence order, and tracks whether the lifecycle owner needs a deferred wakeup.
 ///
+/// # Ordered Domain
+///
+/// Every item takes the next [`DeliverySequence`] when it commits to kernel storage: a local IPC
+/// message when it is posted to a mailbox, and a lifecycle record when its transition commits. A
+/// process creation commits with the new process, a thread termination commits at the first
+/// live-to-zombie transition of the thread, and a process termination commits when the final
+/// thread transition creates the zombie process. A receiver is served the eligible item with the
+/// lowest sequence, whether it is IPC or a lifecycle record, so the owner of the scheduling-event
+/// class observes production order: the creation of a process precedes the termination of each of
+/// its threads, every thread termination precedes the termination of the process, and a thread
+/// termination follows every message that the thread sent before it terminated. Interrupts and
+/// exceptions are not part of this domain. Sequences never wrap, and delivery is transactional: a
+/// failed copy to user space leaves the selected item queued with its sequence.
+///
+/// # Creation Backpressure
+///
+/// Committing a lifecycle record never allocates nor fails, because its capacity is reserved before
+/// the creation that will produce it commits: a process reserves its creation and termination
+/// records, and every thread, including the main thread of a new process and the replacement thread
+/// of `execv()`, reserves its termination record. A creation that fails cancels its reservations. A
+/// reservation is released only when the consumer receives the record that holds it, or at terminal
+/// shutdown: joining, reaping, or harvesting a zombie reclaims execution resources but keeps its
+/// record and reservation. A stalled or absent consumer therefore makes creation fail with
+/// [`ErrorCode::OutOfMemory`] once the reservations are exhausted, without losing any record, and
+/// creation resumes as soon as deliveries release reservations. The permanent bootstrap kernel
+/// thread never terminates and reserves nothing.
+///
 pub(super) struct DeliveryBroker {
     /// Sequence number to allocate to the next committed item.
     next_sequence: Option<DeliverySequence>,
@@ -549,6 +576,15 @@ impl DeliveryBroker {
     ///
     /// Upon success, a creation reservation is returned. Otherwise, an error is returned instead.
     ///
+    /// # Errors
+    ///
+    /// This function returns an [`ErrorCode::OutOfMemory`] error if creation or termination capacity
+    /// is exhausted, which is how undelivered records backpressure process creation.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was already disposed.
+    ///
     pub(super) fn try_reserve_creation(&mut self) -> Result<LifecycleCreationReservation, Error> {
         assert!(!self.disposed, "lifecycle delivery used after disposal");
         if !self.creation_reservations.try_reserve() {
@@ -604,7 +640,7 @@ impl DeliveryBroker {
     /// # Errors
     ///
     /// This function returns an [`ErrorCode::OutOfMemory`] error if thread lifecycle capacity is
-    /// exhausted.
+    /// exhausted, which is how undelivered records backpressure thread creation.
     ///
     /// # Panics
     ///

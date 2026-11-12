@@ -130,6 +130,12 @@ expected_output = "ok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
+program = "./bin/test-rust-thread-wait.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
 program = "./bin/test-rust-kill.initrd"
 expected_output = "ok"
 
@@ -314,6 +320,12 @@ expected_exit_code = 13
 build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-waitpid.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-thread-wait.initrd"
 expected_output = "ok"
 
 [[tests]]

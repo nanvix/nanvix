@@ -10,6 +10,7 @@ ALL_GUEST_TESTS := \
 	test-rust-fork-hostfs \
 	test-rust-fork-kcall \
 	test-rust-waitpid \
+	test-rust-thread-wait \
 	test-rust-kill \
 	test-rust-job-control \
 	test-rust-setenv \

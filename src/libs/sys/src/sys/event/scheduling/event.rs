@@ -18,15 +18,22 @@ use ::core::fmt::Debug;
 ///
 /// # Description
 ///
-/// Scheduling events.
+/// Scheduling events, which are the process and thread lifecycle events that the kernel publishes.
+///
+/// Scheduling events are owned as a single class: registering any of them claims all of them, and
+/// the owner receives each event as a message of the matching lifecycle
+/// [`MessageType`](crate::ipc::MessageType). The kernel delivers lifecycle events and local IPC in
+/// one ordered domain, in production order: the creation of a process precedes the termination of
+/// each of its threads, every thread termination precedes the termination of the process, and a
+/// thread termination follows every message that the thread sent before it terminated.
 ///
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SchedulingEvent {
-    /// Process termination.
+    /// Termination of a process, published when its last thread terminates.
     ProcessTermination,
-    /// Process creation.
+    /// Creation of a process, published when the creation commits.
     ProcessCreation,
-    /// Thread termination.
+    /// Termination of a thread, published when the thread first becomes a zombie.
     ThreadTermination,
 }
 
@@ -38,7 +45,7 @@ impl SchedulingEvent {
     /// Number of scheduling events.
     pub const NUMBER_EVENTS: usize = 3;
 
-    /// Scheduling events.
+    /// Scheduling events, in discriminant order.
     pub const VALUES: [Self; Self::NUMBER_EVENTS] = [
         Self::ProcessTermination,
         Self::ProcessCreation,
