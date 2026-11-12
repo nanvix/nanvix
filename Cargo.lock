@@ -3080,6 +3080,7 @@ dependencies = [
  "compiler_builtins",
  "config",
  "elf",
+ "fs-core",
  "goblin",
  "libc_stdlib",
  "nvx",
