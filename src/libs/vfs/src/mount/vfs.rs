@@ -277,39 +277,11 @@ pub(crate) fn normalize_path(path: &str, cwd: &str) -> Result<String, Fat32Error
 }
 
 /// Lexically normalizes an anchored absolute path.
-pub(crate) fn normalize_anchored(path: &str) -> String {
-    normalize_components(path)
-}
-
-/// Lexically normalizes an absolute `path`.
 ///
-/// Shared with [`Vfs::normalize_path`], which anchors relative paths against a
-/// `cwd` before calling in.
-fn normalize_components(path: &str) -> String {
-    let mut components: Vec<&str> = Vec::new();
-
-    for component in path.split('/') {
-        match component {
-            "" | "." => {},
-            ".." => {
-                components.pop();
-            },
-            other => {
-                components.push(other);
-            },
-        }
-    }
-
-    if components.is_empty() {
-        return String::from("/");
-    }
-
-    let mut result: String = String::new();
-    for component in components {
-        result.push('/');
-        result.push_str(component);
-    }
-    result
+/// Folding `name/..` keeps the named entry because the local namespace has no symbolic links.
+/// Normalization drops trailing separators, so callers that honor them check the anchored path.
+pub(crate) fn normalize_anchored(path: &str) -> String {
+    ::fs_core::path::normalize_lexically(path)
 }
 
 //==================================================================================================

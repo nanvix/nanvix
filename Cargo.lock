@@ -4355,6 +4355,7 @@ dependencies = [
  "error",
  "fat32",
  "fatfs",
+ "fs-core",
  "spin",
  "sys",
  "sysapi",
