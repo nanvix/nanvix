@@ -423,6 +423,126 @@ fn thread_injection_was_consumed(pm: &mut ProcessManager) -> bool {
     !::core::mem::take(&mut pm.fail_next_thread_lifecycle_creation)
 }
 
+///
+/// # Description
+///
+/// Builds arguments that create a user thread in a local process-manager fixture.
+///
+/// # Returns
+///
+/// Thread-creation arguments whose entry point and stack lie in the user address space.
+///
+fn test_thread_create_args() -> ThreadCreateArgs {
+    ThreadCreateArgs {
+        user_fn: VirtualAddress::from_raw_value(::config::memory_layout::USER_BASE_RAW),
+        user_fn_arg0: 0,
+        user_fn_arg1: 0,
+        user_stack_base: VirtualAddress::from_raw_value(
+            ::config::memory_layout::USER_STACK_TOP_RAW - ::arch::mem::PAGE_SIZE,
+        ),
+        user_stack_size: ::arch::mem::PAGE_SIZE,
+        user_tda: None,
+    }
+}
+
+///
+/// # Description
+///
+/// Creates a thread in the running process through the production creation path.
+///
+/// # Parameters
+///
+/// - `pm`: Process manager whose running process receives the thread.
+///
+/// # Returns
+///
+/// Upon success, the identifier of the new thread is returned. Otherwise, the creation error is
+/// returned instead.
+///
+fn create_test_thread(pm: &mut ProcessManager) -> Result<ThreadIdentifier, Error> {
+    let pid: ProcessIdentifier = pm.get_running().state().pid();
+    // SAFETY: the local process manager is not aliased and tests run with interrupts disabled.
+    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+    pm.create_thread(mm, pid, &test_thread_create_args())
+}
+
+///
+/// # Description
+///
+/// Detaches a ready thread of the running process, runs it, terminates it through the production
+/// thread-exit transition, switches back to the calling thread, and reaps the zombie through the
+/// production reaper that thread admission drains. Termination alone keeps the thread's execution
+/// capacity and only the reap releases it, while the termination record of the thread stays queued
+/// in the delivery broker until a consumer receives it.
+///
+/// # Parameters
+///
+/// - `pm`: Process manager whose running process owns the thread.
+/// - `tid`: Identifier of the ready thread to terminate.
+/// - `status`: Exit status of the thread.
+///
+/// # Returns
+///
+/// `true` if the thread terminated and the reaper reaped it, otherwise `false`.
+///
+fn exit_and_reap_thread(
+    pm: &mut ProcessManager,
+    tid: ThreadIdentifier,
+    status: ExitStatus,
+) -> bool {
+    let pid: ProcessIdentifier = pm.get_running().state().pid();
+    if !matches!(pm.do_detach_thread(pid, tid), Ok(None)) {
+        error!("failed to detach a live thread (tid={tid:?})");
+        return false;
+    }
+    let live_before_exit: usize = pm.tm.live_count();
+
+    let caller: RunningProcess = pm.take_running();
+    let caller_tid: ThreadIdentifier = caller.get_tid();
+    let (runnable, _ctx) = caller.schedule();
+    // A freshly created thread was admitted before the caller was rescheduled, so it runs first.
+    let (running, reason, _ctx, _user_tda) = runnable.run();
+    if reason.is_some() || running.get_tid() != tid {
+        error!("expected thread {tid:?} to run (running={:?})", running.get_tid());
+        return false;
+    }
+
+    let delivery: &mut DeliveryBroker = &mut pm.delivery;
+    let (transition, deferred) = running.exit_thread(status, &mut |pending| {
+        ProcessManager::commit_thread_termination(delivery, pending);
+    });
+    // As in the production thread-exit path, the zombie of a detached thread waits for the reaper
+    // until the switch away from its context completes.
+    let runnable: RunnableProcess = match (transition, deferred) {
+        (Ok((_join_cond, runnable, _ctx)), Some(zombie)) => {
+            pm.deferred_reap.push((pid, zombie));
+            runnable
+        },
+        _ => {
+            error!("detached thread exit left an unexpected process state (tid={tid:?})");
+            return false;
+        },
+    };
+    let (running, reason, _ctx, _user_tda) = runnable.run();
+    if reason.is_some() || running.get_tid() != caller_tid {
+        error!("calling thread did not resume after thread exit (tid={tid:?})");
+        return false;
+    }
+    pm.running = Some(running);
+
+    if pm.tm.live_count() != live_before_exit {
+        error!("thread termination released execution capacity before the reap (tid={tid:?})");
+        return false;
+    }
+    // SAFETY: the local process manager is not aliased and tests run with interrupts disabled.
+    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+    if pm.reap_pending_zombies(mm) != 1 {
+        error!("thread admission reaper did not reap the terminated thread (tid={tid:?})");
+        return false;
+    }
+    true
+}
+
 //==================================================================================================
 // Tests
 //==================================================================================================
@@ -725,6 +845,194 @@ fn test_execv_thread_reservation_failure_rolls_back() -> bool {
         error!("execv() changed state or leaked capacity after thread reservation rollback");
         return false;
     }
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that reaping a terminated thread releases its execution capacity while its lifecycle
+/// reservation stays held by the undelivered termination record until a consumer receives it.
+///
+/// # Returns
+///
+/// `true` if reap and delivery release execution and lifecycle capacity independently, otherwise
+/// `false`.
+///
+fn test_reap_releases_execution_capacity_before_delivery() -> bool {
+    let Some(mut pm) = new_user_process_manager() else {
+        return false;
+    };
+    let pid: ProcessIdentifier = pm.get_running().state().pid();
+    let status: ExitStatus = ExitStatus::from(0x0305_5000_u32);
+    let live_before: usize = pm.tm.live_count();
+    let lifecycle_before: Option<usize> = pm.delivery.capacity_in_use();
+
+    let tid: ThreadIdentifier = match create_test_thread(&mut pm) {
+        Ok(tid) => tid,
+        Err(error) => {
+            error!("failed to create lifecycle capacity fixture thread (error={error:?})");
+            return false;
+        },
+    };
+    if pm.tm.live_count() != live_before + 1
+        || pm.delivery.capacity_in_use() != lifecycle_before.map(|in_use| in_use + 1)
+        || pm.delivery.has_lifecycle()
+    {
+        error!("thread creation did not reserve execution and lifecycle capacity");
+        return false;
+    }
+
+    if !exit_and_reap_thread(&mut pm, tid, status) {
+        return false;
+    }
+    if pm.tm.live_count() != live_before {
+        error!("reaping a terminated thread did not release its execution capacity");
+        return false;
+    }
+    if pm.delivery.capacity_in_use() != lifecycle_before.map(|in_use| in_use + 1)
+        || !pm.delivery.has_lifecycle()
+    {
+        error!("reaping released lifecycle capacity before its record was delivered");
+        return false;
+    }
+
+    let expected: ThreadTerminationInfo = ThreadTerminationInfo::new(pid, tid, status);
+    if !receive_expected_lifecycle(
+        &mut pm.delivery,
+        MessageType::ThreadTerminationEvent,
+        &expected.to_ne_bytes(),
+    ) {
+        return false;
+    }
+    if pm.delivery.capacity_in_use() != lifecycle_before || pm.delivery.has_lifecycle() {
+        error!("delivering the termination record did not release its lifecycle capacity");
+        return false;
+    }
+
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that a stalled lifecycle consumer backpressures thread creation deterministically and
+/// without losing records. Each cycle creates, terminates, and reaps a thread, so execution
+/// capacity stays available while undelivered termination records accumulate. Once every thread
+/// lifecycle reservation is held by a record, creation fails without side effects until a delivery
+/// releases one, and then every record is delivered exactly once in production order.
+///
+/// # Returns
+///
+/// `true` if backpressure is deterministic, creation resumes after delivery, and no record is lost,
+/// otherwise `false`.
+///
+fn test_stalled_consumer_backpressures_thread_creation_without_loss() -> bool {
+    let Some(mut pm) = new_user_process_manager() else {
+        return false;
+    };
+    let pid: ProcessIdentifier = pm.get_running().state().pid();
+    // Kernel-heap allocations are bounded by the slab size, so records are tracked on the stack.
+    let mut produced: [Option<ThreadTerminationInfo>; ::config::kernel::MAX_THREADS] =
+        [None; ::config::kernel::MAX_THREADS];
+    let mut count: usize = 0;
+
+    loop {
+        let tid: ThreadIdentifier = match create_test_thread(&mut pm) {
+            Ok(tid) => tid,
+            Err(error) if error.code == ErrorCode::OutOfMemory => break,
+            Err(error) => {
+                error!("thread creation failed with an unexpected error (error={error:?})");
+                return false;
+            },
+        };
+        if count == produced.len() {
+            error!("thread creation was never backpressured by a stalled consumer");
+            return false;
+        }
+        let status: ExitStatus = match u32::try_from(count + 1) {
+            Ok(cycle) => ExitStatus::from(cycle),
+            Err(_) => {
+                error!("thread lifecycle cycle count does not fit an exit status");
+                return false;
+            },
+        };
+        if !exit_and_reap_thread(&mut pm, tid, status) {
+            return false;
+        }
+        produced[count] = Some(ThreadTerminationInfo::new(pid, tid, status));
+        count += 1;
+    }
+
+    // Only the permanent bootstrap kernel thread lacks a termination reservation.
+    if count != ::config::kernel::MAX_THREADS - 1 {
+        error!("backpressure did not engage at thread lifecycle capacity (cycles={count})");
+        return false;
+    }
+    if pm.tm.try_next_tid().is_err() {
+        error!("reaped threads did not leave execution capacity available");
+        return false;
+    }
+
+    // Backpressure is deterministic: further attempts fail the same way and change nothing.
+    let before = thread_creation_state(&pm);
+    match create_test_thread(&mut pm) {
+        Err(error) if error.code == ErrorCode::OutOfMemory => {},
+        Err(error) => {
+            error!("backpressured thread creation returned the wrong error (error={error:?})");
+            return false;
+        },
+        Ok(tid) => {
+            error!("thread creation exceeded lifecycle capacity (tid={tid:?})");
+            return false;
+        },
+    }
+    if thread_creation_state(&pm) != before {
+        error!("backpressured thread creation changed process-manager state");
+        return false;
+    }
+
+    // Delivering the oldest record releases exactly one reservation, so creation resumes.
+    let Some(oldest) = produced[0] else {
+        error!("oldest thread termination record was not tracked");
+        return false;
+    };
+    if !receive_expected_lifecycle(
+        &mut pm.delivery,
+        MessageType::ThreadTerminationEvent,
+        &oldest.to_ne_bytes(),
+    ) {
+        return false;
+    }
+    let resumed_tid: ThreadIdentifier = match create_test_thread(&mut pm) {
+        Ok(tid) => tid,
+        Err(error) => {
+            error!("thread creation did not resume after a delivery (error={error:?})");
+            return false;
+        },
+    };
+    let resumed_status: ExitStatus = ExitStatus::from(0x0305_5001_u32);
+    if !exit_and_reap_thread(&mut pm, resumed_tid, resumed_status) {
+        return false;
+    }
+    produced[count] = Some(ThreadTerminationInfo::new(pid, resumed_tid, resumed_status));
+    count += 1;
+
+    for info in produced[1..count].iter().flatten() {
+        if !receive_expected_lifecycle(
+            &mut pm.delivery,
+            MessageType::ThreadTerminationEvent,
+            &info.to_ne_bytes(),
+        ) {
+            error!("thread termination record was lost or reordered (tid={:?})", info.tid);
+            return false;
+        }
+    }
+    if pm.delivery.has_lifecycle() || pm.delivery.capacity_in_use() != Some(0) {
+        error!("draining the stalled consumer left lifecycle state behind");
+        return false;
+    }
+
     true
 }
 
@@ -1683,6 +1991,8 @@ pub(in crate::pm::process) fn test() -> bool {
     passed &= run_test!(test_duplicate_process_reservation_failure_rolls_back);
     passed &= run_test!(test_create_thread_reservation_failure_rolls_back);
     passed &= run_test!(test_execv_thread_reservation_failure_rolls_back);
+    passed &= run_test!(test_reap_releases_execution_capacity_before_delivery);
+    passed &= run_test!(test_stalled_consumer_backpressures_thread_creation_without_loss);
     passed &= run_test!(test_zombie_transitions_produce_ordered_lifecycle_records);
     passed &= run_test!(test_exec_replacement_produces_thread_termination_only);
     passed &= run_test!(test_exec_replacement_inherits_signal_mask);
