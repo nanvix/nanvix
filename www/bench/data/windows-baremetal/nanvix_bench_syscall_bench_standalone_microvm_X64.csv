@@ -56,3 +56,12 @@ commit,section,operation,samples,p50,p95,p99
 2c4323c343255d9dbdbbca9bd9991a368723d10c,Daemons,write,100,15932,15980,16024
 2c4323c343255d9dbdbbca9bd9991a368723d10c,Daemons,open+close,100,25778,25954,26427
 >>>>>>> Stashed changes
+eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Kernel,getppid,100,282,283,323
+eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Kernel,clock_gettime,100,902,911,926
+eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Kernel,sched_yield,100,3956,4004,4107
+eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Daemons,getpgrp,100,10897,10941,11095
+eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Daemons,fstat,100,17848,17891,17986
+eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Daemons,stat,100,18490,18583,19323
+eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Daemons,read,100,15754,15809,15826
+eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Daemons,write,100,15872,15919,16108
+eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Daemons,open+close,100,24946,25185,25478
