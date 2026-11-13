@@ -319,7 +319,9 @@ pub fn register_setenv_callback(cb: SetenvCallback) {
 
 /// Invokes the registered setenv callback, if any.
 fn invoke_setenv_callback(key: &str, value: &[u8]) {
-    if let Some(cb) = { *SETENV_CALLBACK.lock() } {
+    // Copy the callback out first, so that the lock is released before it runs.
+    let callback: Option<SetenvCallback> = *SETENV_CALLBACK.lock();
+    if let Some(cb) = callback {
         cb(key, value);
     }
 }

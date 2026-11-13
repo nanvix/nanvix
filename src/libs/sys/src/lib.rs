@@ -8,7 +8,8 @@
 #![deny(clippy::all)]
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
-#![cfg_attr(feature = "kcall", feature(never_type))] // exit() uses this.
+// exit() uses this: stable since Rust 1.100, but Verus ships an older toolchain.
+#![cfg_attr(all(feature = "kcall", verus_keep_ghost), feature(never_type))]
 #![cfg_attr(feature = "kcall", feature(likely_unlikely))] // Branch hints for unlikely error paths.
 #![cfg_attr(feature = "kcall", feature(linkage))] // Unified per-image getpid() cache (CACHED_PID).
 #![cfg_attr(not(feature = "std"), no_std)]

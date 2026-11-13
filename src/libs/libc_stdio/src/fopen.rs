@@ -63,7 +63,7 @@ use ::sysapi::{
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> *mut FILE {
     extern "C" {
-        fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int;
+        fn open(path: *const c_char, flags: c_int, ...) -> c_int;
         fn malloc(size: c_size_t) -> *mut c_void;
         fn close(fd: c_int) -> c_int;
     }

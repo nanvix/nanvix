@@ -18,7 +18,6 @@ use crate::{
         c_short,
     },
     sys_types::{
-        mode_t,
         off_t,
         pid_t,
     },
@@ -197,6 +196,6 @@ pub struct flock {
 
 unsafe extern "C" {
     pub fn fcntl(fd: c_int, cmd: c_int, _op: ...);
-    pub fn open(path: *const c_char, flags: c_int, mode: mode_t) -> c_int;
+    pub fn open(path: *const c_char, flags: c_int, ...) -> c_int;
     pub fn posix_fallocate(fd: c_int, offset: off_t, len: off_t) -> c_int;
 }
