@@ -143,6 +143,12 @@ extern void test_special_file_types(void);
 
 extern void test_terminal_devices(void);
 
+// Tests the standard descriptor aliases on console, pipe, and closed descriptors.
+extern void test_stdio_aliases(void);
+
+// Tests whether the standard descriptor aliases follow redirection to a file.
+extern void test_stdio_alias_redirection(void);
+
 // Tests whether we can create a symbolic link to a file.
 extern void test_symlinkat(void);
 

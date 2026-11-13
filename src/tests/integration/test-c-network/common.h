@@ -67,4 +67,7 @@ extern void test_socket_stat(void);
 // Tests socket creation flags in socket() and socketpair().
 extern void test_socket_flags(struct in_addr sin_addr);
 
+// Tests /dev/stdin when standard input is redirected to a socket.
+extern void test_socket_stdio_alias(struct in_addr sin_addr);
+
 #endif
