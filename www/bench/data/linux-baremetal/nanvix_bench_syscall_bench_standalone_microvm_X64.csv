@@ -64,3 +64,12 @@ eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Daemons,stat,100,23004,23040,24194
 eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Daemons,read,100,18140,18175,18197
 eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Daemons,write,100,18509,18530,18545
 eead9f3c4ff37e79aab9f5e87ebb8b7622f6cb61,Daemons,open+close,100,28070,28126,28173
+6c554bdba355a5faefd5a7ea44df6dceb0e24f1b,Kernel,getppid,100,291,292,300
+6c554bdba355a5faefd5a7ea44df6dceb0e24f1b,Kernel,clock_gettime,100,1022,1023,1025
+6c554bdba355a5faefd5a7ea44df6dceb0e24f1b,Kernel,sched_yield,100,3171,3181,3277
+6c554bdba355a5faefd5a7ea44df6dceb0e24f1b,Daemons,getpgrp,100,11759,11785,11882
+6c554bdba355a5faefd5a7ea44df6dceb0e24f1b,Daemons,fstat,100,22125,22156,23320
+6c554bdba355a5faefd5a7ea44df6dceb0e24f1b,Daemons,stat,100,23014,23047,23083
+6c554bdba355a5faefd5a7ea44df6dceb0e24f1b,Daemons,read,100,18061,18113,18123
+6c554bdba355a5faefd5a7ea44df6dceb0e24f1b,Daemons,write,100,18483,18509,18519
+6c554bdba355a5faefd5a7ea44df6dceb0e24f1b,Daemons,open+close,100,28241,28291,28317
