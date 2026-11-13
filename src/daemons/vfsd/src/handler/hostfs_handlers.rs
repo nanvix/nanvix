@@ -1094,7 +1094,10 @@ pub(crate) fn handle_openat_with_hostfs(
                         response_context,
                         source_tid: source,
                         source_pid,
-                        kind: PendingOpKind::Open { path: resolved },
+                        kind: PendingOpKind::Open {
+                            path: resolved,
+                            flags: request.flags,
+                        },
                     },
                 )
                 .is_err()

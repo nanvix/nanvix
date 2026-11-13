@@ -639,7 +639,8 @@ fn terminal_device_open_modes() {
     vfs_seed_root_console(pid);
     set_current_process(pid);
 
-    let redirected: c_int = vfs_alloc_hostfs(10, false, None).expect("open redirected file");
+    let redirected: c_int = vfs_alloc_hostfs(10, false, None, file_access_mode::O_RDONLY)
+        .expect("open redirected file");
     for fd in [STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO] {
         vfs_dup2(redirected, fd).expect("redirect standard descriptor");
     }
@@ -922,9 +923,9 @@ fn alloc_is_lowest_free() {
     set_current_process(pid);
 
     // A fresh process with no console seeded allocates from 0 upward.
-    let a: c_int = vfs_alloc_hostfs(10, false, None).expect("alloc a");
-    let b: c_int = vfs_alloc_hostfs(11, false, None).expect("alloc b");
-    let c: c_int = vfs_alloc_hostfs(12, false, None).expect("alloc c");
+    let a: c_int = vfs_alloc_hostfs(10, false, None, file_access_mode::O_RDONLY).expect("alloc a");
+    let b: c_int = vfs_alloc_hostfs(11, false, None, file_access_mode::O_RDONLY).expect("alloc b");
+    let c: c_int = vfs_alloc_hostfs(12, false, None, file_access_mode::O_RDONLY).expect("alloc c");
     assert_eq!((a, b, c), (0, 1, 2), "flat allocation hands out the lowest free numbers");
     assert!(
         [a, b, c].iter().all(|fd| (0..MAX_OPEN_FDS).contains(fd)),
@@ -933,7 +934,7 @@ fn alloc_is_lowest_free() {
 
     // Freeing the middle descriptor makes it the lowest free, so the next alloc reuses it.
     vfs_close(b).expect("close b");
-    let d: c_int = vfs_alloc_hostfs(13, false, None).expect("alloc d");
+    let d: c_int = vfs_alloc_hostfs(13, false, None, file_access_mode::O_RDONLY).expect("alloc d");
     assert_eq!(d, b, "a freed number is reused before any higher one");
 
     forget_processes(&[pid]);
@@ -948,12 +949,14 @@ fn first_open_after_console_seed_returns_three() {
 
     vfs_seed_root_console(root);
     set_current_process(root);
-    let fd: c_int = vfs_alloc_hostfs(20, false, None).expect("alloc after seed");
+    let fd: c_int =
+        vfs_alloc_hostfs(20, false, None, file_access_mode::O_RDONLY).expect("alloc after seed");
     assert_eq!(fd, 3, "console occupies 0/1/2, so the first open returns 3");
 
     // Closing stdin frees slot 0, which the lowest-free allocator then reuses ahead of 4.
     vfs_close(STDIN_FILENO).expect("close stdin");
-    let reused: c_int = vfs_alloc_hostfs(21, false, None).expect("alloc after closing stdin");
+    let reused: c_int = vfs_alloc_hostfs(21, false, None, file_access_mode::O_RDONLY)
+        .expect("alloc after closing stdin");
     assert_eq!(reused, STDIN_FILENO, "closing stdin makes 0 the lowest free number");
 
     forget_processes(&[root]);
@@ -973,7 +976,8 @@ fn vfs_resolve_reports_backend_by_handle() {
             .expect("console alloc");
     let socket_fd: c_int =
         alloc_fd(VfsFileHandle::Socket(SocketHandle::new(77))).expect("socket alloc");
-    let file_fd: c_int = vfs_alloc_hostfs(30, false, None).expect("hostfs alloc");
+    let file_fd: c_int =
+        vfs_alloc_hostfs(30, false, None, file_access_mode::O_RDONLY).expect("hostfs alloc");
 
     // The console token's backend is its stream number (stdout = 1), not its slot number.
     assert_eq!(
@@ -992,6 +996,27 @@ fn vfs_resolve_reports_backend_by_handle() {
         "a vfsd-served handle resolves to its raw descriptor"
     );
     assert_eq!(vfs_resolve(4096), None, "an absent descriptor resolves to None");
+
+    forget_processes(&[pid]);
+}
+
+/// Tests that a host-backed descriptor records the access mode and `O_NONBLOCK` it was opened
+/// with, while creation flags are not retained as status flags.
+#[test]
+fn hostfs_descriptor_records_open_status_flags() {
+    let _guard = FORK_TEST_GUARD.lock();
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7413);
+    set_current_process(pid);
+
+    let flags: c_int = file_access_mode::O_WRONLY
+        | file_creation_flags::O_CREAT
+        | file_creation_flags::O_TRUNC
+        | file_status_flags::O_NONBLOCK;
+    let fd: c_int = vfs_alloc_hostfs(90, false, None, flags).expect("hostfs alloc");
+    let duplicate: c_int = vfs_dup(fd).expect("dup hostfs descriptor");
+    let expected: c_int = file_access_mode::O_WRONLY | file_status_flags::O_NONBLOCK;
+    assert_eq!(vfs_fcntl(fd, file_control_request::F_GETFL, 0), Ok(expected));
+    assert_eq!(vfs_fcntl(duplicate, file_control_request::F_GETFL, 0), Ok(expected));
 
     forget_processes(&[pid]);
 }
@@ -1091,7 +1116,8 @@ fn generation_advances_on_table_mutations() {
     let start: u64 = vfs_current_generation();
 
     // Allocating a descriptor (open) advances the generation.
-    let fd: c_int = vfs_alloc_hostfs(50, false, None).expect("alloc should succeed");
+    let fd: c_int = vfs_alloc_hostfs(50, false, None, file_access_mode::O_RDONLY)
+        .expect("alloc should succeed");
     let after_open: u64 = vfs_current_generation();
     assert!(after_open > start, "open must advance the generation");
 
@@ -1129,7 +1155,8 @@ fn fork_inherits_open_descriptors() {
 
     // Parent opens a host-backed descriptor.
     set_current_process(parent);
-    let fd: c_int = vfs_alloc_hostfs(42, false, None).expect("alloc should succeed");
+    let fd: c_int = vfs_alloc_hostfs(42, false, None, file_access_mode::O_RDONLY)
+        .expect("alloc should succeed");
     assert_eq!(vfs_hostfs_remote_fd(fd), Some(42), "parent should see the remote fd");
 
     // Fork: the child inherits a copy of the descriptor table.
@@ -1151,7 +1178,8 @@ fn fork_shares_open_file_description() {
 
     // Parent opens a descriptor; it is the sole reference.
     set_current_process(parent);
-    let fd: c_int = vfs_alloc_hostfs(43, false, None).expect("alloc should succeed");
+    let fd: c_int = vfs_alloc_hostfs(43, false, None, file_access_mode::O_RDONLY)
+        .expect("alloc should succeed");
     assert!(vfs_hostfs_is_last_ref(fd), "the only descriptor should be the last reference");
 
     // Fork: parent and child now share the open file description.
@@ -1182,7 +1210,8 @@ fn fork_descriptor_close_is_isolated() {
         (ProcessIdentifier::from(0x7021), ProcessIdentifier::from(0x7022));
 
     set_current_process(parent);
-    let fd: c_int = vfs_alloc_hostfs(44, false, None).expect("alloc should succeed");
+    let fd: c_int = vfs_alloc_hostfs(44, false, None, file_access_mode::O_RDONLY)
+        .expect("alloc should succeed");
     vfs_fork_clone(parent, child).expect("fork clone should succeed");
 
     // The child closes its descriptor.
@@ -1257,7 +1286,8 @@ fn fork_into_existing_child_is_rejected() {
 
     // The child already holds an open descriptor (e.g., PID reuse or a logic bug).
     set_current_process(child);
-    let fd: c_int = vfs_alloc_hostfs(45, false, None).expect("alloc should succeed");
+    let fd: c_int = vfs_alloc_hostfs(45, false, None, file_access_mode::O_RDONLY)
+        .expect("alloc should succeed");
 
     // Forking onto it must fail rather than clobber the existing state.
     let err: Fat32Error =
@@ -1284,7 +1314,8 @@ fn fork_overwrites_empty_placeholder_child() {
 
     // Parent opens a host-backed descriptor.
     set_current_process(parent);
-    let fd: c_int = vfs_alloc_hostfs(46, false, None).expect("alloc should succeed");
+    let fd: c_int = vfs_alloc_hostfs(46, false, None, file_access_mode::O_RDONLY)
+        .expect("alloc should succeed");
 
     // The child's first request reaches the VFS before the fork-clone notification, lazily
     // inserting an empty placeholder state for it.
@@ -1743,7 +1774,8 @@ fn isatty_and_tty_control_are_authoritative() {
     vfs_seed_root_console(root);
     set_current_process(root);
 
-    let file_fd: c_int = vfs_alloc_hostfs(50, false, None).expect("hostfs alloc");
+    let file_fd: c_int =
+        vfs_alloc_hostfs(50, false, None, file_access_mode::O_RDONLY).expect("hostfs alloc");
     let socket_fd: c_int = vfs_register_socket(2060).expect("socket register");
 
     assert_eq!(
@@ -1833,7 +1865,8 @@ fn register_socket_allocates_flat_slot() {
     assert_eq!(vfs_socket_remote_fd(fd), Some(2050), "the socket reports its remote fd");
     assert!(vfs_socket_is_last_ref(fd), "the sole reference is the last reference");
     // A non-socket descriptor is not reported as a socket.
-    let file_fd: c_int = vfs_alloc_hostfs(70, false, None).expect("alloc file");
+    let file_fd: c_int =
+        vfs_alloc_hostfs(70, false, None, file_access_mode::O_RDONLY).expect("alloc file");
     assert_eq!(vfs_socket_remote_fd(file_fd), None, "a hostfs descriptor is not a socket");
     assert!(!vfs_socket_is_last_ref(file_fd), "a non-socket is never a socket last reference");
 
@@ -2019,7 +2052,8 @@ fn fork_drops_close_on_fork_slots() {
     let clofork_fd: c_int =
         alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
             .expect("console alloc should succeed");
-    let kept_fd: c_int = vfs_alloc_hostfs(70, false, None).expect("hostfs alloc should succeed");
+    let kept_fd: c_int = vfs_alloc_hostfs(70, false, None, file_access_mode::O_RDONLY)
+        .expect("hostfs alloc should succeed");
     let mut clofork: FdFlags = FdFlags::default();
     clofork.set_close_on_fork(true);
     vfs_set_fd_flags(clofork_fd, clofork).expect("setting close-on-fork should succeed");
@@ -2105,7 +2139,8 @@ fn exec_cloexec_reports_pipe_and_hostfs_reclaim() {
     vfs_set_fd_flags(write_fd, cloexec).expect("setting close-on-exec should succeed");
     // A host-backed descriptor, also flagged close-on-exec, for which this process is the sole
     // reference.
-    let hostfs_fd: c_int = vfs_alloc_hostfs(70, false, None).expect("hostfs alloc should succeed");
+    let hostfs_fd: c_int = vfs_alloc_hostfs(70, false, None, file_access_mode::O_RDONLY)
+        .expect("hostfs alloc should succeed");
     vfs_set_fd_flags(hostfs_fd, cloexec).expect("setting close-on-exec should succeed");
 
     let reclaim: ProcessExitReclaim = vfs_exec_cloexec(pid);
@@ -2174,7 +2209,8 @@ fn exec_cloexec_shared_description_not_reclaimed() {
     set_current_process(pid);
 
     // A host-backed descriptor duplicated onto a second number: the two share one description.
-    let hostfs_fd: c_int = vfs_alloc_hostfs(71, false, None).expect("hostfs alloc should succeed");
+    let hostfs_fd: c_int = vfs_alloc_hostfs(71, false, None, file_access_mode::O_RDONLY)
+        .expect("hostfs alloc should succeed");
     let dup_fd: c_int = vfs_dup(hostfs_fd).expect("dup should succeed");
     // Flag only the original close-on-exec; the dup sibling stays unflagged.
     let mut cloexec: FdFlags = FdFlags::default();
@@ -2265,7 +2301,8 @@ fn fcntl_fd_flags_are_per_descriptor_after_dup() {
 
     // `dup` aliases the source's open file description, so both descriptors address the same
     // underlying file — the precondition for proving the flags stay per descriptor.
-    let fd: c_int = vfs_alloc_hostfs(65, false, None).expect("alloc should succeed");
+    let fd: c_int = vfs_alloc_hostfs(65, false, None, file_access_mode::O_RDONLY)
+        .expect("alloc should succeed");
     let dup_fd: c_int = vfs_dup(fd).expect("dup should succeed");
     assert!(
         Arc::ptr_eq(&entry_arc(fd).unwrap(), &entry_arc(dup_fd).unwrap()),
@@ -2604,7 +2641,8 @@ fn fork_into_active_child_with_no_descriptors_is_rejected() {
     // The child becomes active by allocating a descriptor, then closes it: its table is empty
     // but it remains a real, initialized process.
     set_current_process(child);
-    let fd: c_int = vfs_alloc_hostfs(71, false, None).expect("alloc should succeed");
+    let fd: c_int = vfs_alloc_hostfs(71, false, None, file_access_mode::O_RDONLY)
+        .expect("alloc should succeed");
     vfs_close(fd).expect("close should succeed");
     assert_eq!(registry_open_fd_count(child), 0, "child holds no descriptors after closing");
 
@@ -2627,7 +2665,7 @@ fn dup_aliases_description_and_clears_cloexec() {
     let pid: ProcessIdentifier = ProcessIdentifier::from(0x7501);
     set_current_process(pid);
 
-    let fd: c_int = vfs_alloc_hostfs(60, false, None).expect("alloc");
+    let fd: c_int = vfs_alloc_hostfs(60, false, None, file_access_mode::O_RDONLY).expect("alloc");
     // Mark the source close-on-exec so we can prove the duplicate does not inherit it.
     let mut flags: FdFlags = FdFlags::default();
     flags.set_close_on_exec(true);
@@ -2666,7 +2704,7 @@ fn dup_from_allocates_at_or_above_min() {
     let pid: ProcessIdentifier = ProcessIdentifier::from(0x7502);
     set_current_process(pid);
 
-    let fd: c_int = vfs_alloc_hostfs(61, false, None).expect("alloc");
+    let fd: c_int = vfs_alloc_hostfs(61, false, None, file_access_mode::O_RDONLY).expect("alloc");
     // Request a duplicate no lower than 10; nothing is allocated there yet, so it lands on 10.
     let high: c_int = vfs_dup_from(fd, 10).expect("dup_from");
     assert_eq!(high, 10, "F_DUPFD must return the lowest free fd >= arg");
@@ -2699,7 +2737,8 @@ fn dup2_repoints_across_backends() {
     let console_fd: c_int =
         alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
             .expect("console alloc");
-    let file_fd: c_int = vfs_alloc_hostfs(62, false, None).expect("file alloc");
+    let file_fd: c_int =
+        vfs_alloc_hostfs(62, false, None, file_access_mode::O_RDONLY).expect("file alloc");
     // The file is the sole reference before dup2.
     assert!(vfs_hostfs_is_last_ref(file_fd), "file should be the last reference pre-dup2");
 
@@ -2729,7 +2768,7 @@ fn dup2_noop_and_invalid_arguments() {
     let pid: ProcessIdentifier = ProcessIdentifier::from(0x7504);
     set_current_process(pid);
 
-    let fd: c_int = vfs_alloc_hostfs(63, false, None).expect("alloc");
+    let fd: c_int = vfs_alloc_hostfs(63, false, None, file_access_mode::O_RDONLY).expect("alloc");
     let before: u64 = vfs_current_generation();
     assert_eq!(vfs_dup2(fd, fd).expect("dup2 self"), fd, "dup2(fd, fd) returns fd");
     assert_eq!(vfs_current_generation(), before, "a no-op dup2 must not advance the generation");
@@ -2755,8 +2794,10 @@ fn dup2_releases_displaced_last_reference() {
     let pid: ProcessIdentifier = ProcessIdentifier::from(0x7505);
     set_current_process(pid);
 
-    let src_fd: c_int = vfs_alloc_hostfs(64, false, None).expect("src alloc");
-    let victim_fd: c_int = vfs_alloc_hostfs(65, false, None).expect("victim alloc");
+    let src_fd: c_int =
+        vfs_alloc_hostfs(64, false, None, file_access_mode::O_RDONLY).expect("src alloc");
+    let victim_fd: c_int =
+        vfs_alloc_hostfs(65, false, None, file_access_mode::O_RDONLY).expect("victim alloc");
     // The victim is the only reference to remote fd 65, so the daemon would inspect it for
     // reclaim before calling dup2.
     assert!(vfs_hostfs_is_last_ref(victim_fd), "victim is the last reference pre-dup2");
@@ -2797,7 +2838,8 @@ fn dup2_console_save_restore_dance_restores_console() {
     assert_eq!(stdout_fd, STDOUT_FILENO, "console stdout must be fd 1");
 
     // A file to redirect into.
-    let file_fd: c_int = vfs_alloc_hostfs(70, false, None).expect("file alloc");
+    let file_fd: c_int =
+        vfs_alloc_hostfs(70, false, None, file_access_mode::O_RDONLY).expect("file alloc");
 
     // savedfd = fcntl(1, F_DUPFD, 10): park the console stdout above the low range.
     let saved_fd: c_int = vfs_dup_from(stdout_fd, 10).expect("savefd");
@@ -2840,7 +2882,8 @@ fn fstat_hostfs_uses_hostfs_identity() {
     let pid: ProcessIdentifier = ProcessIdentifier::from(0x7508);
     set_current_process(pid);
 
-    let fd: c_int = vfs_alloc_hostfs(80, false, None).expect("hostfs alloc");
+    let fd: c_int =
+        vfs_alloc_hostfs(80, false, None, file_access_mode::O_RDONLY).expect("hostfs alloc");
     let mut st: ::sysapi::sys_stat::stat = Default::default();
     vfs_fstat(fd, &mut st).expect("fstat hostfs");
 

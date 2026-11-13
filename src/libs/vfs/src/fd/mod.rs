@@ -683,13 +683,20 @@ pub fn vfs_pipe_is_last_ref(fd: c_int) -> bool {
 ///
 /// This is called by vfsd after receiving a successful OPEN response from hostfsd.
 /// The returned FD is handed back to the user process.
+///
+/// `open_flags` are the flags the caller passed to `open`. The access mode and `O_NONBLOCK` are
+/// recorded as the status flags of the new open file description, exactly as for a local open, so
+/// `F_GETFL` and duplicates of the descriptor observe the access the host file was opened with.
 pub fn vfs_alloc_hostfs(
     remote_fd: i32,
     is_dir: bool,
     path: Option<String>,
+    open_flags: c_int,
 ) -> Result<c_int, Fat32Error> {
     let handle: VfsFileHandle = VfsFileHandle::HostFs(HostFsHandle::new(remote_fd, is_dir, path));
-    alloc_fd(handle)
+    let status_flags: c_int =
+        open_flags & (file_access_mode::O_ACCMODE | file_status_flags::O_NONBLOCK);
+    alloc_fd_with_status(handle, status_flags)
 }
 
 /// Returns the remote FD for a HostFs file descriptor, or `None` if the FD
