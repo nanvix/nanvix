@@ -377,7 +377,7 @@ human-readable `message`. Callers should branch on `code` and relay `message` fo
 
 ## Logging
 
-`nanvixd` uses the `RUST_LOG` environment variable for daemon-level logging (printed to stderr).
+`nanvixd` uses the `RUST_LOG` environment variable to set the level of its daemon-level logs.
 This applies to both interactive and HTTP modes:
 
 ```bash
@@ -396,6 +396,9 @@ By default, `nanvixd`'s own structured (`logrus`) records are written to an auto
 This is useful when a parent process (for example, the Nanvix containerd shim) captures
 `nanvixd`'s stdout and forwards it to its own log sink. `-log-to-stdout` and `-log-dir` are
 mutually exclusive.
+
+In interactive mode, the stdout of `nanvixd` also carries the output of the guest, so the records
+are interleaved with it. In HTTP mode, the output of the guest goes through the gateway instead.
 
 ## Expert Mode: Direct User VM
 

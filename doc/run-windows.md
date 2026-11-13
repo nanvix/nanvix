@@ -229,7 +229,7 @@ Linux implementation in the following ways:
 
 ## Logging
 
-`nanvixd` uses the `RUST_LOG` environment variable for daemon-level logging (printed to stderr):
+`nanvixd` uses the `RUST_LOG` environment variable to set the level of its daemon-level logs:
 
 ```powershell
 $env:RUST_LOG = "debug"
@@ -246,6 +246,9 @@ By default, `nanvixd`'s own structured (`logrus`) records are written to an auto
 
 This is useful when a parent process captures `nanvixd`'s stdout and forwards it to its own
 log sink. `-log-to-stdout` and `-log-dir` are mutually exclusive.
+
+In interactive mode, the stdout of `nanvixd` also carries the output of the guest, so the records
+are interleaved with it. In HTTP mode, the output of the guest goes through the gateway instead.
 
 ## Expert Mode: Direct UserVM
 

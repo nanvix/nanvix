@@ -23,6 +23,7 @@ use ::log::{
 use ::nanvix::{
     config::system::DEFAULT_MACHINE_NAME,
     http::HttpServer,
+    log::LogDestination,
     sandbox_config::StandaloneConfig,
     terminal::Terminal,
 };
@@ -94,12 +95,7 @@ async fn async_main() -> Result<ExitCode> {
             .collect(),
     )?;
 
-    ::nanvix::log::init(
-        !args.log_to_stdout(),
-        DEFAULT_LOG_LEVEL,
-        args.log_directory().to_string(),
-        None,
-    );
+    ::nanvix::log::init_with_destination(log_destination(&args), DEFAULT_LOG_LEVEL);
 
     print_startup_info(&args);
 
@@ -189,6 +185,31 @@ async fn ensure_kernel_binary_available(args: &Args) -> Result<String> {
             error!("ensure_kernel_binary_available(): {reason}");
             Err(::anyhow::anyhow!(reason))
         },
+    }
+}
+
+///
+/// # Description
+///
+/// Returns the destination of the log records of the Nanvix Daemon.
+///
+/// # Parameters
+///
+/// - `args`: Parsed command-line arguments.
+///
+/// # Returns
+///
+/// Standard output if logs are routed to it (see [`Args::log_to_stdout()`]). Otherwise, a log file
+/// in the log directory.
+///
+fn log_destination(args: &Args) -> LogDestination {
+    if args.log_to_stdout() {
+        LogDestination::Stdout
+    } else {
+        LogDestination::File {
+            directory: args.log_directory().to_string(),
+            discriminator: None,
+        }
     }
 }
 
