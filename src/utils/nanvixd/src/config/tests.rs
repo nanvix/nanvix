@@ -3,6 +3,163 @@
 
 use super::*;
 use ::std::path::PathBuf;
+use ::tempfile::TempDir;
+
+///
+/// Writes a configuration file named `nanvixd.toml` to a directory and returns its path.
+///
+fn write_config_file(directory: &Path, contents: &str) -> PathBuf {
+    let config_path: PathBuf = directory.join("nanvixd.toml");
+    ::std::fs::write(&config_path, contents).expect("failed to write configuration file");
+    config_path
+}
+
+#[test]
+fn config_file_resolves_paths_against_its_directory() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    let config_directory: PathBuf = tmp_dir.path().join("etc");
+    ::std::fs::create_dir_all(config_directory.join("share")).expect("failed to create dirs");
+    ::std::fs::write(config_directory.join("vm.snapshot"), b"snapshot")
+        .expect("failed to write snapshot");
+    let log_directory: PathBuf = tmp_dir.path().join("logs");
+    let contents: String = [
+        "bin_dir = \"bin\"".to_string(),
+        "console_file = \"console.log\"".to_string(),
+        "ramfs = \"rootfs.img\"".to_string(),
+        "snapshot = \"vm.snapshot\"".to_string(),
+        "mount = \"share\"".to_string(),
+        format!("log_dir = '{}'", log_directory.display()),
+    ]
+    .join("\n");
+    let config_path: PathBuf = write_config_file(&config_directory, &contents);
+
+    let config_file: ConfigFile =
+        ConfigFile::load(&config_path).expect("failed to load configuration file");
+    let resolved = |name: &str| Some(config_directory.join(name).to_string_lossy().into_owned());
+    assert_eq!(config_file.bin_dir, resolved("bin"));
+    assert_eq!(config_file.console_file, resolved("console.log"));
+    assert_eq!(config_file.ramfs, resolved("rootfs.img"));
+    assert_eq!(config_file.snapshot, resolved("vm.snapshot"));
+    assert_eq!(config_file.mount, resolved("share"));
+    assert_eq!(config_file.log_dir.as_deref().map(Path::new), Some(log_directory.as_path()));
+}
+
+#[cfg(unix)]
+#[test]
+fn config_file_resolves_gateway_socket_path_against_its_directory() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    let config_path: PathBuf =
+        write_config_file(tmp_dir.path(), "gateway_sockaddr = \"gateway.sock\"\n");
+
+    let config_file: ConfigFile =
+        ConfigFile::load(&config_path).expect("failed to load configuration file");
+    assert_eq!(
+        config_file.gateway_sockaddr.as_deref().map(Path::new),
+        Some(tmp_dir.path().join("gateway.sock").as_path())
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn config_file_keeps_gateway_named_pipe_path() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    let config_path: PathBuf =
+        write_config_file(tmp_dir.path(), r"gateway_sockaddr = '\\.\pipe\nanvix-gw'");
+
+    let config_file: ConfigFile =
+        ConfigFile::load(&config_path).expect("failed to load configuration file");
+    assert_eq!(config_file.gateway_sockaddr.as_deref(), Some(r"\\.\pipe\nanvix-gw"));
+}
+
+#[cfg(windows)]
+#[test]
+fn config_file_rejects_gateway_path_that_is_not_a_named_pipe() {
+    for gateway_sockaddr in ["gateway.sock", r"C:\nanvix\gateway.sock", r"\\.\pipe\"] {
+        let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+        let contents: String = format!("gateway_sockaddr = '{gateway_sockaddr}'");
+        let config_path: PathBuf = write_config_file(tmp_dir.path(), &contents);
+        let error: ::anyhow::Error =
+            ConfigFile::load(&config_path).expect_err("gateway path that is not a named pipe");
+        let message: String = error.to_string();
+        assert!(message.contains("named pipe path"), "unexpected error: {message}");
+    }
+}
+
+#[test]
+fn config_file_rejects_invalid_options() {
+    let cases: [(&str, &str); 5] = [
+        ("bin_directory = \"bin\"\n", "unknown field `bin_directory`"),
+        ("log_to_stdout = true\nlog_dir = \"logs\"\n", "log_to_stdout and log_dir"),
+        ("block_hosts = [\"8.8.8.8/40\"]\n", "invalid block_hosts entry"),
+        ("snapshot = \"missing.snapshot\"\n", "snapshot path does not exist"),
+        ("mount = \"nanvixd.toml\"\n", "mount path is not a directory"),
+    ];
+    for (contents, expected) in cases {
+        let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+        let config_path: PathBuf = write_config_file(tmp_dir.path(), contents);
+        let error: ::anyhow::Error =
+            ConfigFile::load(&config_path).expect_err("invalid configuration file");
+        let message: String = error.to_string();
+        assert!(message.contains(expected), "unexpected error for {contents:?}: {message}");
+        assert!(
+            message.contains(&config_path.display().to_string()),
+            "error does not name the configuration file: {message}"
+        );
+    }
+}
+
+#[test]
+fn config_file_reports_missing_file() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    let config_path: PathBuf = tmp_dir.path().join("missing.toml");
+    let error: ::anyhow::Error =
+        ConfigFile::load(&config_path).expect_err("missing configuration file");
+    let message: String = error.to_string();
+    assert!(message.contains("failed to read configuration file"), "unexpected error: {message}");
+    assert!(message.contains(&config_path.display().to_string()), "unexpected error: {message}");
+}
+
+#[test]
+fn config_file_loads_cpu_mask_from_hwloc_file() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    // Entries of other components, including legacy ones, are ignored.
+    ::std::fs::write(
+        tmp_dir.path().join("hwloc.json"),
+        r#"{"client_core_str": "0", "nanovm_core_str": "1", "nanvixd_core_str": "0-1,3"}"#,
+    )
+    .expect("failed to write hwloc file");
+    let config_path: PathBuf = write_config_file(tmp_dir.path(), "hwloc = \"hwloc.json\"\n");
+
+    let config_file: ConfigFile =
+        ConfigFile::load(&config_path).expect("failed to load configuration file");
+    assert_eq!(config_file.cpu_mask.as_deref(), Some("0-1,3"));
+}
+
+#[test]
+fn config_file_rejects_invalid_hwloc_files() {
+    let cases: [(Option<&str>, &str); 4] = [
+        (None, "failed to read hwloc file"),
+        (Some("{"), "failed to parse hwloc file"),
+        (Some(r#"{"client_core_str": "0"}"#), "has no nanvixd_core_str entry"),
+        (Some(r#"{"nanvixd_core_str": "0-1024"}"#), "out of range"),
+    ];
+    for (hwloc_contents, expected) in cases {
+        let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+        if let Some(hwloc_contents) = hwloc_contents {
+            ::std::fs::write(tmp_dir.path().join("hwloc.json"), hwloc_contents)
+                .expect("failed to write hwloc file");
+        }
+        let config_path: PathBuf = write_config_file(tmp_dir.path(), "hwloc = \"hwloc.json\"\n");
+        let error: ::anyhow::Error =
+            ConfigFile::load(&config_path).expect_err("invalid hwloc file");
+        let message: String = error.to_string();
+        assert!(message.contains(expected), "unexpected error for {hwloc_contents:?}: {message}");
+        assert!(
+            message.contains(&config_path.display().to_string()),
+            "error does not name the configuration file: {message}"
+        );
+    }
+}
 
 #[test]
 fn executable_directory_returns_parent_directory() {

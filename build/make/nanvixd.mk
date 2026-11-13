@@ -123,3 +123,6 @@ rust-lint-nanvixd:
 
 rust-lint-check-nanvixd:
 	$(HOST_CARGO_CLIPPY_CMD) --tests $(NANVIXD_CARGO_FEATURES) -p nanvixd -- -D warnings
+
+test-nanvixd:
+	$(HOST_CARGO_TEST_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd

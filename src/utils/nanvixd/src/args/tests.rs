@@ -7,6 +7,7 @@ use ::std::path::{
     Path,
     PathBuf,
 };
+use ::tempfile::TempDir;
 
 fn argv(extras: &[&str]) -> Vec<String> {
     let mut v: Vec<String> = vec!["nanvixd".to_string()];
@@ -14,6 +15,15 @@ fn argv(extras: &[&str]) -> Vec<String> {
         v.push((*s).to_string());
     }
     v
+}
+
+///
+/// Writes a configuration file named `nanvixd.toml` to a directory and returns its path.
+///
+fn write_config_file(directory: &TempDir, contents: &str) -> String {
+    let config_path: PathBuf = directory.path().join("nanvixd.toml");
+    ::std::fs::write(&config_path, contents).expect("failed to write configuration file");
+    config_path.to_string_lossy().into_owned()
 }
 
 #[test]
@@ -242,4 +252,137 @@ fn bin_dir_flag_overrides_default() {
     let args =
         Args::parse(argv(&["-bin-dir", "/opt/nanvix/bin", "--", "/bin/foo"])).expect("parse");
     assert_eq!(args.binary_directory(), "/opt/nanvix/bin");
+}
+
+#[test]
+fn config_file_sets_options() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    let config_path: String = write_config_file(
+        &tmp_dir,
+        "http_addr = \"127.0.0.1:9999\"\nbin_dir = \"bin\"\nconsole_file = \
+         \"console.log\"\nkernel_args = \"snapshot\"\nallow_host_networking = true\nlog_to_stdout \
+         = true\n",
+    );
+
+    let args = Args::parse(argv(&["-config", &config_path])).expect("parse");
+    assert_eq!(args.config_path(), Some(config_path.as_str()));
+    assert_eq!(args.http_sockaddr(), Some("127.0.0.1:9999"));
+    assert!(!args.interactive_mode());
+    assert_eq!(Path::new(args.binary_directory()), tmp_dir.path().join("bin"));
+    assert_eq!(args.console_file().map(PathBuf::from), Some(tmp_dir.path().join("console.log")));
+    assert_eq!(args.kernel_args(), Some("snapshot"));
+    assert!(args.networking_mode().is_enabled());
+    assert!(args.log_to_stdout());
+}
+
+#[test]
+fn command_line_overrides_config_file() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    let config_path: String = write_config_file(
+        &tmp_dir,
+        "http_addr = \"127.0.0.1:9999\"\nbin_dir = \"bin\"\nkernel_args = \"snapshot\"\n",
+    );
+
+    let args = Args::parse(argv(&[
+        "-config",
+        &config_path,
+        "-http-addr",
+        "127.0.0.1:8888",
+        "-bin-dir",
+        "/opt/nanvix/bin",
+        "-kernel-args",
+        "debug",
+    ]))
+    .expect("parse");
+    assert_eq!(args.http_sockaddr(), Some("127.0.0.1:8888"));
+    assert_eq!(args.binary_directory(), "/opt/nanvix/bin");
+    assert_eq!(args.kernel_args(), Some("debug"));
+}
+
+#[test]
+fn interactive_mode_overrides_config_file_http_addr() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    let config_path: String = write_config_file(&tmp_dir, "http_addr = \"127.0.0.1:9999\"\n");
+
+    let args = Args::parse(argv(&["-config", &config_path, "--", "/bin/foo"])).expect("parse");
+    assert!(args.interactive_mode());
+    assert_eq!(args.http_sockaddr(), None);
+}
+
+#[test]
+fn command_line_log_destination_overrides_config_file() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    let config_path: String = write_config_file(&tmp_dir, "log_dir = \"logs\"\n");
+    let args = Args::parse(argv(&["-config", &config_path, "-log-to-stdout", "--", "/bin/foo"]))
+        .expect("parse");
+    assert!(args.log_to_stdout());
+
+    let config_path: String = write_config_file(&tmp_dir, "log_to_stdout = true\n");
+    let args = Args::parse(argv(&[
+        "-config",
+        &config_path,
+        "-log-dir",
+        "/tmp/somewhere",
+        "--",
+        "/bin/foo",
+    ]))
+    .expect("parse");
+    assert!(!args.log_to_stdout());
+    assert_eq!(args.log_directory(), "/tmp/somewhere");
+}
+
+#[test]
+fn config_file_and_command_line_host_rules_accumulate() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    let config_path: String = write_config_file(
+        &tmp_dir,
+        "allow_hosts = [\"10.0.0.0/8\"]\nblock_hosts = [\"10.0.0.1\"]\n",
+    );
+
+    let args = Args::parse(argv(&[
+        "-config",
+        &config_path,
+        "-allow-host-networking",
+        "-allow-host",
+        "192.168.0.0/16",
+        "-block-host",
+        "10.0.0.2",
+        "--",
+        "/bin/foo",
+    ]))
+    .expect("parse");
+    let filter = args.host_filter();
+    assert!(filter.permits([10, 0, 0, 3]));
+    assert!(filter.permits([192, 168, 1, 1]));
+    assert!(!filter.permits([10, 0, 0, 1]));
+    assert!(!filter.permits([10, 0, 0, 2]));
+    assert!(!filter.permits([8, 8, 8, 8]));
+}
+
+#[test]
+fn config_file_host_rules_require_networking_enabled() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    let config_path: String = write_config_file(&tmp_dir, "allow_hosts = [\"10.0.0.0/8\"]\n");
+
+    let res = Args::parse(argv(&["-config", &config_path, "--", "/bin/foo"]));
+    let msg: String = format!("{:#}", res.expect_err("expected requires-networking error"));
+    assert!(msg.contains("allow_host_networking"), "unexpected error: {msg}");
+}
+
+#[test]
+fn config_file_sets_cpu_mask() {
+    let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
+    ::std::fs::write(tmp_dir.path().join("hwloc.json"), r#"{"nanvixd_core_str": "2-3"}"#)
+        .expect("failed to write hwloc file");
+    let config_path: String = write_config_file(&tmp_dir, "hwloc = \"hwloc.json\"\n");
+
+    let args = Args::parse(argv(&["-config", &config_path, "--", "/bin/foo"])).expect("parse");
+    assert_eq!(args.cpu_mask(), Some("2-3"));
+}
+
+#[test]
+fn rejects_config_without_value() {
+    let res = Args::parse(argv(&["-config"]));
+    let msg: String = format!("{:#}", res.expect_err("expected missing-value error"));
+    assert!(msg.contains("missing value for: -config"), "unexpected error: {msg}");
 }

@@ -16,8 +16,10 @@ chrono = { workspace = true, features = ["std", "clock"] }
 log = { workspace = true }
 nanvix = { workspace = true }
 rand = { workspace = true }
+serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
+toml = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

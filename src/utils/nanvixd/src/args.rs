@@ -5,13 +5,17 @@
 //!
 //! This module provides functionality to parse and validate command-line arguments passed to
 //! the Nanvix Daemon. It handles various configuration options including network settings,
-//! directory paths and guest execution settings.
+//! directory paths and guest execution settings, which may also be loaded from a configuration
+//! file (see [`Args::OPT_CONFIG_FILE`]).
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::config;
+use crate::config::{
+    self,
+    ConfigFile,
+};
 use ::anyhow::Result;
 use ::nanvix::{
     log::DEFAULT_LOG_DIRECTORY,
@@ -21,6 +25,7 @@ use ::nanvix::{
         NetworkingMode,
     },
 };
+use ::std::path::Path;
 
 //==================================================================================================
 // Structures
@@ -31,12 +36,14 @@ use ::nanvix::{
 ///
 /// Stores parsed command-line arguments for nanvixd.
 ///
-/// This structure holds all configuration parameters provided via command-line arguments,
-/// including network settings, directory paths, hardware topology information, socket types,
-/// and workload execution flags.
+/// This structure holds all configuration parameters provided via command-line arguments and the
+/// configuration file, including network settings, directory paths, hardware topology
+/// information, socket types, and workload execution flags.
 ///
 #[derive(Debug, Clone)]
 pub struct Args {
+    /// Optional path of the configuration file from which options were loaded.
+    config_path: Option<String>,
     /// Optional HTTP server socket address (host:port). If present, enables HTTP mode.
     http_sockaddr: Option<String>,
     /// Directory path containing Nanvix binaries.
@@ -73,6 +80,9 @@ pub struct Args {
     /// and writes to its stdin. UDS path on Unix, named pipe path on
     /// Windows. Defaults to a per-process auto path when omitted.
     gateway_sockaddr: Option<String>,
+    /// Optional CPU mask to which nanvixd pins itself, from the `nanvixd_core_str` entry of the
+    /// hardware locality file of the configuration file.
+    cpu_mask: Option<String>,
 }
 
 //==================================================================================================
@@ -82,6 +92,8 @@ pub struct Args {
 impl Args {
     /// Command-line flag that prints usage information.
     pub const OPT_HELP: &'static str = "-help";
+    /// Command-line option that loads options from a configuration file.
+    pub const OPT_CONFIG_FILE: &'static str = "-config";
     /// Command-line option that sets the HTTP socket address.
     pub const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
     /// Command-line option that sets the binary directory path.
@@ -123,6 +135,18 @@ impl Args {
     /// This function processes all supported command-line flags and options, validates them,
     /// and enforces mutual exclusivity between HTTP mode and interactive mode.
     ///
+    /// Options may also be loaded from a configuration file given with [`Self::OPT_CONFIG_FILE`].
+    /// Options given on the command line take precedence over the configuration file, with the
+    /// following refinements:
+    ///
+    /// - The operation mode and the log destination each count as a single option. Selecting
+    ///   interactive mode on the command line overrides the `http_addr` key of the configuration
+    ///   file, and [`Self::OPT_LOG_DIRECTORY`] or [`Self::OPT_LOG_TO_STDOUT`] override both the
+    ///   `log_dir` and `log_to_stdout` keys.
+    /// - Host rules accumulate: the rules of the configuration file apply along with the ones
+    ///   given on the command line.
+    /// - Flags that the configuration file turns on cannot be turned off on the command line.
+    ///
     /// # Parameters
     ///
     /// - `args`: Vector of command-line arguments to parse.
@@ -133,6 +157,7 @@ impl Args {
     /// the parsing issue or validation failure.
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
+        let mut config_path: Option<String> = None;
         let mut http_sockaddr: Option<String> = None;
         let mut binary_directory: Option<String> = None;
         let mut console_file: Option<String> = None;
@@ -174,6 +199,17 @@ impl Args {
                     Self::usage(args[0].as_str());
                     return Err(anyhow::anyhow!("wrong usage"));
                 },
+                Self::OPT_CONFIG_FILE => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_CONFIG_FILE
+                        ));
+                    }
+                    config_path = Some(args[i].clone());
+                },
                 Self::OPT_HTTP_SOCKADDR => {
                     i += 1;
                     http_sockaddr = Some(args[i].clone());
@@ -212,12 +248,7 @@ impl Args {
                         Self::usage(args[0].as_str());
                         return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_SNAPSHOT));
                     }
-                    let path: &str = &args[i];
-                    let metadata = ::std::fs::metadata(path)
-                        .map_err(|_| anyhow::anyhow!("snapshot path does not exist: {}", path))?;
-                    if !metadata.is_file() {
-                        return Err(anyhow::anyhow!("snapshot path is not a file: {}", path));
-                    }
+                    config::validate_snapshot_path(&args[i])?;
                     snapshot_path = Some(args[i].clone());
                 },
                 Self::OPT_MOUNT_DIRECTORY => {
@@ -229,12 +260,7 @@ impl Args {
                             Self::OPT_MOUNT_DIRECTORY
                         ));
                     }
-                    let path: &str = &args[i];
-                    let metadata = ::std::fs::metadata(path)
-                        .map_err(|_| anyhow::anyhow!("mount directory does not exist: {}", path))?;
-                    if !metadata.is_dir() {
-                        return Err(anyhow::anyhow!("mount path is not a directory: {}", path));
-                    }
+                    config::validate_mount_directory(&args[i])?;
                     mount_directory = Some(args[i].clone());
                 },
                 Self::OPT_KERNEL_ARGS => {
@@ -314,24 +340,82 @@ impl Args {
             );
         }
 
-        // A host filter is meaningless without host networking enabled -- the
-        // guest has no egress to filter. Reject rather than silently ignore.
-        if (!allow_hosts.is_empty() || !block_hosts.is_empty()) && !networking_mode.is_enabled() {
-            anyhow::bail!(
-                "{} / {} require {}",
-                Self::OPT_ALLOW_HOST,
-                Self::OPT_BLOCK_HOST,
-                Self::OPT_ALLOW_HOST_NETWORKING,
-            );
+        // Load the configuration file, if any. Options given on the command line take precedence
+        // over the ones that it sets.
+        let config_file: ConfigFile = match config_path.as_deref() {
+            Some(path) => ConfigFile::load(Path::new(path))?,
+            None => ConfigFile::default(),
+        };
+
+        // The operation mode is a single option: when the command line selects a mode, it
+        // overrides the HTTP socket address of the configuration file.
+        if http_sockaddr.is_none() && program_name.is_none() {
+            http_sockaddr = config_file.http_addr;
         }
 
+        // The log destination is a single option as well: when the command line sets one, it
+        // overrides the one of the configuration file.
+        if !log_to_stdout && !log_directory_set {
+            log_to_stdout = config_file.log_to_stdout;
+            if let Some(directory) = config_file.log_dir {
+                log_directory = directory;
+            }
+        }
+
+        let binary_directory: Option<String> = binary_directory.or(config_file.bin_dir);
+        let console_file: Option<String> = console_file.or(config_file.console_file);
+        let ramfs_filename: Option<String> = ramfs_filename.or(config_file.ramfs);
+        let snapshot_path: Option<String> = snapshot_path.or(config_file.snapshot);
+        let mount_directory: Option<String> = mount_directory.or(config_file.mount);
+        let kernel_args: Option<String> = kernel_args.or(config_file.kernel_args);
+        #[cfg(feature = "gdb")]
+        let gdb_port: Option<u16> = gdb_port.or(config_file.gdb_port);
+        let gateway_sockaddr: Option<String> = gateway_sockaddr.or(config_file.gateway_sockaddr);
+        let cpu_mask: Option<String> = config_file.cpu_mask;
+        if config_file.allow_host_networking {
+            networking_mode = NetworkingMode::Enabled;
+        }
+
+        // A host filter is meaningless without host networking enabled -- the
+        // guest has no egress to filter. Reject rather than silently ignore.
+        if !networking_mode.is_enabled() {
+            if !allow_hosts.is_empty() || !block_hosts.is_empty() {
+                anyhow::bail!(
+                    "{} / {} require {}",
+                    Self::OPT_ALLOW_HOST,
+                    Self::OPT_BLOCK_HOST,
+                    Self::OPT_ALLOW_HOST_NETWORKING,
+                );
+            }
+            if !config_file.allow_hosts.is_empty() || !config_file.block_hosts.is_empty() {
+                anyhow::bail!(
+                    "allow_hosts / block_hosts of the configuration file require \
+                     allow_host_networking or {}",
+                    Self::OPT_ALLOW_HOST_NETWORKING,
+                );
+            }
+        }
+
+        // Host rules accumulate, like repeated command-line options: the rules of the
+        // configuration file apply along with the ones given on the command line.
+        let allow_hosts: Vec<String> = config_file
+            .allow_hosts
+            .into_iter()
+            .chain(allow_hosts)
+            .collect();
+        let block_hosts: Vec<String> = config_file
+            .block_hosts
+            .into_iter()
+            .chain(block_hosts)
+            .collect();
+
         // Build the policy only after every rule has been validated above. Any
-        // `-allow-host` rule selects deny-by-default, otherwise the default is
-        // allow; `-block-host` rules always deny and override allow rules,
-        // regardless of the order in which the flags were given. With
-        // `-allow-host`, the DNS exception is opted into so name resolution keeps
-        // working for the allowed hosts, matching the help text; it never
-        // overrides a `-block-host` rule.
+        // allow rule (`-allow-host` or `allow_hosts`) selects deny-by-default,
+        // otherwise the default is allow; block rules (`-block-host` or
+        // `block_hosts`) always deny and override allow rules, regardless of the
+        // order in which they were given. With allow rules, the DNS exception is
+        // opted into so name resolution keeps working for the allowed hosts,
+        // matching the help text; it never overrides a block rule.
         let host_filter: HostFilter = HostFilter::from_lists(&allow_hosts, &block_hosts, true)?;
 
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
@@ -350,8 +434,8 @@ impl Args {
 
         if !http_mode && !interactive_mode {
             anyhow::bail!(
-                "must specify either HTTP mode ({} <sockaddr>) or interactive mode ({} <program> \
-                 [<args>...])",
+                "must specify either HTTP mode ({} <sockaddr>, or http_addr in the configuration \
+                 file) or interactive mode ({} <program> [<args>...])",
                 Self::OPT_HTTP_SOCKADDR,
                 Self::OPT_SEPARATOR
             );
@@ -363,6 +447,7 @@ impl Args {
             binary_directory.unwrap_or_else(config::default_binary_directory);
 
         Ok(Self {
+            config_path,
             http_sockaddr,
             binary_directory,
             console_file,
@@ -379,6 +464,7 @@ impl Args {
             host_filter,
             log_to_stdout,
             gateway_sockaddr,
+            cpu_mask,
         })
     }
 
@@ -405,6 +491,8 @@ Usage (Interactive mode):
   {program_name} [OPTIONS] {separator} <program> [<args>...]
 
 Options:
+  {config} <file>                           Load options from a TOML configuration file. Options \
+             given on the command line take precedence.
   {console_file} <file>                     Redirect console output to a file.
   {ramfs_filename} <file>                   Attach a RAM filesystem image to spawned user VMs.
   {bin_dir} <bin_dir>                       Directory containing Nanvix binaries (Default: \
@@ -432,6 +520,7 @@ Options:
             http_usage = http_usage,
             program_name = program_name,
             separator = Self::OPT_SEPARATOR,
+            config = Self::OPT_CONFIG_FILE,
             console_file = Self::OPT_CONSOLE_FILE,
             ramfs_filename = Self::OPT_RAMFS_FILENAME,
             bin_dir = Self::OPT_BIN_DIRECTORY,
@@ -450,6 +539,19 @@ Options:
                 ""
             },
         );
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the path of the configuration file from which options were loaded.
+    ///
+    /// # Returns
+    ///
+    /// The path given with [`Self::OPT_CONFIG_FILE`], if any.
+    ///
+    pub fn config_path(&self) -> Option<&str> {
+        self.config_path.as_deref()
     }
 
     ///
@@ -634,6 +736,22 @@ Options:
     /// instead of the file logger. See [`Self::OPT_LOG_TO_STDOUT`].
     pub fn log_to_stdout(&self) -> bool {
         self.log_to_stdout
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the CPU mask to which nanvixd pins itself.
+    ///
+    /// The CPU mask is the `nanvixd_core_str` entry of the hardware locality file that the `hwloc`
+    /// key of the configuration file names. It has been validated already.
+    ///
+    /// # Returns
+    ///
+    /// The CPU mask, if any.
+    ///
+    pub fn cpu_mask(&self) -> Option<&str> {
+        self.cpu_mask.as_deref()
     }
 }
 

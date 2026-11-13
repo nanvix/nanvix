@@ -45,3 +45,31 @@ async fn ensure_kernel_binary_available_rejects_missing_kernel() {
     assert!(message.contains(KERNEL_BINARY_NAME));
     assert!(message.contains(Args::OPT_BIN_DIRECTORY));
 }
+
+#[test]
+fn log_destination_follows_log_to_stdout() {
+    let args: Args = Args::parse(vec![
+        "nanvixd".to_string(),
+        "-log-to-stdout".to_string(),
+        "--".to_string(),
+        "hello".to_string(),
+    ])
+    .expect("failed to parse args");
+    assert_eq!(log_destination(&args), LogDestination::Stdout);
+
+    let args: Args = Args::parse(vec![
+        "nanvixd".to_string(),
+        "-log-dir".to_string(),
+        "/tmp/nanvixd-logs".to_string(),
+        "--".to_string(),
+        "hello".to_string(),
+    ])
+    .expect("failed to parse args");
+    assert_eq!(
+        log_destination(&args),
+        LogDestination::File {
+            directory: "/tmp/nanvixd-logs".to_string(),
+            discriminator: None,
+        }
+    );
+}
