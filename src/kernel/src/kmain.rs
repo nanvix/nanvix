@@ -10,10 +10,9 @@
 #![forbid(clippy::large_stack_arrays)]
 #![allow(static_mut_refs)] // https://github.com/nanvix/kernel/issues/454
 #![allow(internal_features)]
-// Rust 1.100 moved Box::try_new() from allocator_api to allocator_ext and stabilized the rest of
-// allocator_api and never_type. Verus ships an older toolchain, which still needs the old gates.
-#![cfg_attr(not(verus_keep_ghost), feature(allocator_ext))] // mm uses this.
-#![cfg_attr(verus_keep_ghost, feature(allocator_api))] // kheap and mm use this.
+// Rust 1.100 stabilized allocator_api and never_type. Verus ships an older toolchain, which still
+// needs these gates.
+#![cfg_attr(verus_keep_ghost, feature(allocator_api))] // kheap uses this.
 #![cfg_attr(verus_keep_ghost, feature(never_type))] // exit() uses this.
 #![feature(proc_macro_hygiene)] // statement-level verus_spec loop invariants need this.
 #![cfg_attr(not(verus_keep_ghost), feature(stmt_expr_attributes))]

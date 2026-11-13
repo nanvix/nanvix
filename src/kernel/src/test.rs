@@ -21,11 +21,14 @@ const TEST_KERNEL_ARGS_MAGIC: &str = "test_magic=0xDEADBEEF";
 ///
 /// # Description
 ///
-/// Runs the in-kernel tests of the memory, clock, and event subsystems.
+/// Runs the in-kernel tests of the memory, kernel heap, clock, and event subsystems.
 ///
 pub(crate) fn test() {
     if !crate::hal::mem::test() {
         panic!("memory tests failed");
+    }
+    if !crate::mm::test() {
+        panic!("kernel heap tests failed");
     }
     #[cfg(feature = "microvm")]
     if !crate::hal::platform::pvclock::test() {
