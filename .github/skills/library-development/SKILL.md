@@ -88,7 +88,8 @@ These run on the host system and are compiled with the host Rust build command
 
 3. Add the crate to the workspace `members` list in the root `Cargo.toml`.
 
-4. Add the crate to the workspace `[workspace.dependencies]` section.
+4. Add the crate to the workspace `[workspace.dependencies]` section once another workspace crate
+   depends on it. Cargo warns about `[workspace.dependencies]` entries that no member inherits.
 
 5. Add the library name to the appropriate list in the
    `Makefile`:
