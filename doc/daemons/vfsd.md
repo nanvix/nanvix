@@ -276,6 +276,19 @@ client-side route cache. Descriptor-table mutations update the epoch so clients 
 stale routes. Unlike ordinary dispatch, this handler selects the process table using the PID in the
 request payload.
 
+`/dev/stdin`, `/dev/stdout`, and `/dev/stderr` name the caller's descriptors `0`, `1`, and `2`.
+Opening one duplicates the named descriptor as if by `dup`, rather than reopening the underlying
+file as Linux does: the new descriptor shares the open file description, so the file offset and
+status flags are shared, a `dup2` redirection of the standard descriptor is followed, and
+`O_TRUNC`, `O_APPEND`, and `O_NONBLOCK` have no effect. Only `O_CLOEXEC` and `O_CLOFORK` take
+effect, as flags of the new descriptor. The open fails with `EACCES` if it requests access that the
+description does not permit, with `EEXIST` for `O_CREAT | O_EXCL`, and with `ENOENT` if the named
+descriptor is closed. `OpenAtResponse` reports the duplicate's route and backend descriptor, so a
+console, socket, or HostFS target keeps its routing. `stat` and `access` follow the named
+descriptor, and `stat` of an alias whose descriptor is open on HostFS is forwarded to `hostfsd`.
+`getdents` reports the aliases as `DT_UNKNOWN`. They cannot be created, removed, renamed, or used
+as a working directory, and their timestamps cannot be changed.
+
 ### HostFS Protocol
 
 HostFS forwarding is disabled at boot. A client enables it with
@@ -581,6 +594,8 @@ failures in essential identity, signup, or sending the console subscription are 
 - UserVM bounds unmatched bulk metadata and rejects excess requests rather than buffering
   indefinitely.
 - Parallelizing `vfsd` requires replacing the global VFS process selector and static bulk buffers.
+- `/dev/stdin`, `/dev/stdout`, and `/dev/stderr` are not symbolic links, and `/proc/self/fd` does
+  not exist.
 
 ## Source Guide
 

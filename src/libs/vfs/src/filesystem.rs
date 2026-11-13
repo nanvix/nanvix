@@ -289,7 +289,13 @@ pub(crate) fn set_times(
 pub(crate) fn mkdir(path: AnchoredPath) -> Result<(), Fat32Error> {
     let path: VfsResolvedPath = VfsResolvedPath::new(path)?;
     match path.device() {
-        Some(DevicePath::Directory | DevicePath::Null | DevicePath::Tty | DevicePath::Console) => {
+        Some(
+            DevicePath::Directory
+            | DevicePath::Null
+            | DevicePath::Tty
+            | DevicePath::Console
+            | DevicePath::Alias(_),
+        ) => {
             return Err(Fat32Error::AlreadyExists);
         },
         Some(DevicePath::Missing) => return Err(Fat32Error::PermissionDenied),
@@ -578,9 +584,13 @@ pub(crate) fn normalize(path: AnchoredPath) -> Result<String, Fat32Error> {
 /// Rejects mutation of an existing synthetic device-namespace entry.
 fn reject_device_mutation(path: Option<DevicePath>) -> Result<(), Fat32Error> {
     match path {
-        Some(DevicePath::Directory | DevicePath::Null | DevicePath::Tty | DevicePath::Console) => {
-            Err(Fat32Error::PermissionDenied)
-        },
+        Some(
+            DevicePath::Directory
+            | DevicePath::Null
+            | DevicePath::Tty
+            | DevicePath::Console
+            | DevicePath::Alias(_),
+        ) => Err(Fat32Error::PermissionDenied),
         Some(DevicePath::Missing) => Err(Fat32Error::NotFound),
         None => Ok(()),
     }
@@ -594,6 +604,7 @@ fn reject_device_destination(path: Option<DevicePath>) -> Result<(), Fat32Error>
             | DevicePath::Null
             | DevicePath::Tty
             | DevicePath::Console
+            | DevicePath::Alias(_)
             | DevicePath::Missing,
         ) => Err(Fat32Error::PermissionDenied),
         None => Ok(()),
@@ -648,7 +659,13 @@ pub(crate) fn open(
     }
 
     match path.device() {
-        Some(DevicePath::Directory | DevicePath::Null | DevicePath::Tty | DevicePath::Console) => {
+        Some(
+            DevicePath::Directory
+            | DevicePath::Null
+            | DevicePath::Tty
+            | DevicePath::Console
+            | DevicePath::Alias(_),
+        ) => {
             return Err(Fat32Error::NotAFile);
         },
         Some(DevicePath::Missing) if create || create_new => {

@@ -24,6 +24,8 @@ pub struct DirEntry {
     is_dir: bool,
     /// Whether this entry is a character device.
     is_character_device: bool,
+    /// Whether this entry aliases a standard descriptor, so its type follows that descriptor.
+    is_descriptor_alias: bool,
     /// Size in bytes (0 for directories).
     size: u64,
 }
@@ -47,6 +49,7 @@ impl DirEntry {
             inode,
             is_dir,
             is_character_device: false,
+            is_descriptor_alias: false,
             size,
         }
     }
@@ -58,6 +61,22 @@ impl DirEntry {
             inode,
             is_dir: false,
             is_character_device: true,
+            is_descriptor_alias: false,
+            size: 0,
+        }
+    }
+
+    /// Creates a directory entry for a standard-descriptor alias such as `/dev/stdin`.
+    ///
+    /// The type of an alias depends on the descriptor it currently names, so it is not reported
+    /// as a directory, a character device, or a regular file.
+    pub fn new_descriptor_alias(name: String, inode: u64) -> Self {
+        Self {
+            name,
+            inode,
+            is_dir: false,
+            is_character_device: false,
+            is_descriptor_alias: true,
             size: 0,
         }
     }
@@ -84,6 +103,12 @@ impl DirEntry {
     #[must_use]
     pub fn is_character_device(&self) -> bool {
         self.is_character_device
+    }
+
+    /// Returns whether this entry aliases a standard descriptor.
+    #[must_use]
+    pub fn is_descriptor_alias(&self) -> bool {
+        self.is_descriptor_alias
     }
 
     /// Returns the size in bytes (0 for directories).

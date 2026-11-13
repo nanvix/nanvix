@@ -129,6 +129,8 @@ pub fn open(path: &filesystem::VfsResolvedPath, flags: c_int) -> Result<VfsFileH
             return Err(Fat32Error::NotFound);
         },
         Some(DevicePath::Directory) => return Err(Fat32Error::NotAFile),
+        // The descriptor layer resolves aliases before reaching the open adapter.
+        Some(DevicePath::Alias(_)) => return Err(Fat32Error::NotAFile),
         Some(DevicePath::Tty | DevicePath::Console) | None => {},
     }
 

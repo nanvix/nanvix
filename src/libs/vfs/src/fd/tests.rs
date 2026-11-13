@@ -84,9 +84,10 @@ fn devfs_directory() {
     assert_eq!(root[0].inode(), directory.st_ino);
     assert_eq!(
         dev.iter().map(|entry| entry.name()).collect::<Vec<_>>(),
-        ["null", "tty", "console"]
+        ["null", "tty", "console", "stdin", "stdout", "stderr"]
     );
-    assert!(dev.iter().all(|entry| entry.is_character_device()));
+    assert!(dev[..3].iter().all(|entry| entry.is_character_device()));
+    assert!(dev[3..].iter().all(|entry| entry.is_descriptor_alias()));
 
     let fd: c_int = vfs_open("/dev", file_access_mode::O_RDONLY).expect("open /dev");
     let mut opened: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
@@ -97,6 +98,12 @@ fn devfs_directory() {
     assert_eq!(dents.len(), 1);
     assert_eq!(dents[0].d_type, ::sysapi::dirent::dirent_file_type::DT_CHR);
     assert_eq!(dents[0].d_ino, dev[0].inode());
+    let rest: Vec<::sysapi::dirent::posix_dent> =
+        vfs_getdents(fd, dev.len()).expect("getdents rest of /dev");
+    assert_eq!(rest.len(), dev.len() - 1);
+    assert!(rest[2..]
+        .iter()
+        .all(|dent| dent.d_type == ::sysapi::dirent::dirent_file_type::DT_UNKNOWN));
     vfs_close(fd).expect("close /dev");
     forget_processes(&[pid]);
 }
@@ -1017,6 +1024,144 @@ fn hostfs_descriptor_records_open_status_flags() {
     let expected: c_int = file_access_mode::O_WRONLY | file_status_flags::O_NONBLOCK;
     assert_eq!(vfs_fcntl(fd, file_control_request::F_GETFL, 0), Ok(expected));
     assert_eq!(vfs_fcntl(duplicate, file_control_request::F_GETFL, 0), Ok(expected));
+
+    forget_processes(&[pid]);
+}
+
+// -- Standard descriptor alias tests ----------------------------------------
+
+/// Tests that opening a standard-descriptor alias duplicates the descriptor it names: the new
+/// descriptor shares the open file description, ignores the flags that would create a new one,
+/// and takes `O_CLOEXEC` as its own descriptor flag.
+#[test]
+fn descriptor_alias_open_shares_description() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7414);
+    set_current_process(pid);
+    let mount: &str = "/stdio-alias";
+    crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+
+    // A fresh process receives the lowest free descriptor.
+    let create_flags: c_int = file_access_mode::O_RDWR | file_creation_flags::O_CREAT;
+    let file: c_int = vfs_open("/stdio-alias/file", create_flags).expect("create file");
+    assert_eq!(file, STDIN_FILENO);
+    assert_eq!(vfs_write(file, b"hello"), Ok(5));
+    assert_eq!(vfs_dup2(file, STDOUT_FILENO), Ok(STDOUT_FILENO));
+
+    let flags: c_int = file_access_mode::O_WRONLY
+        | file_creation_flags::O_CREAT
+        | file_creation_flags::O_TRUNC
+        | file_status_flags::O_APPEND;
+    let alias: c_int = vfs_open("/dev/stdout", flags).expect("open /dev/stdout");
+    assert_eq!(vfs_fcntl(alias, file_control_request::F_GETFL, 0), Ok(file_access_mode::O_RDWR));
+    assert_eq!(vfs_fcntl(alias, file_control_request::F_GETFD, 0), Ok(0));
+    assert_eq!(vfs_lseek(alias, 0, file_seek::SEEK_CUR), Ok(5), "the offset is shared");
+    assert_eq!(vfs_write(alias, b"!"), Ok(1));
+    assert_eq!(vfs_lseek(file, 0, file_seek::SEEK_CUR), Ok(6), "the offset is shared");
+
+    let cloexec_flags: c_int = file_access_mode::O_RDONLY | file_creation_flags::O_CLOEXEC;
+    let cloexec: c_int = vfs_open("/dev/stdin", cloexec_flags).expect("open /dev/stdin");
+    assert_eq!(vfs_fcntl(cloexec, file_control_request::F_GETFD, 0), Ok(FD_CLOEXEC));
+
+    let mut by_alias: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+    let mut by_fd: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+    vfs_stat("/dev/stdout", &mut by_alias).expect("stat /dev/stdout");
+    vfs_fstat(file, &mut by_fd).expect("fstat file");
+    assert_eq!(by_alias.st_mode & file_type::S_IFMT, file_type::S_IFREG);
+    assert_eq!((by_alias.st_dev, by_alias.st_ino), (by_fd.st_dev, by_fd.st_ino));
+    assert_eq!(by_alias.st_size, 6, "O_TRUNC must not truncate the named file");
+    assert_eq!(vfs_access("/dev/stdout"), Ok(()));
+
+    let exclusive_flags: c_int =
+        file_access_mode::O_WRONLY | file_creation_flags::O_CREAT | file_creation_flags::O_EXCL;
+    let directory_flags: c_int = file_access_mode::O_RDONLY | file_creation_flags::O_DIRECTORY;
+    assert_eq!(vfs_open("/dev/stdout", exclusive_flags), Err(Fat32Error::AlreadyExists));
+    assert_eq!(
+        vfs_open("/dev/stdout", file_access_mode::O_EXEC),
+        Err(Fat32Error::PermissionDenied)
+    );
+    assert_eq!(vfs_open("/dev/stdout", directory_flags), Err(Fat32Error::NotADirectory));
+    assert_eq!(
+        vfs_open("/dev/stdout/", file_access_mode::O_RDONLY),
+        Err(Fat32Error::NotADirectory)
+    );
+    assert_eq!(
+        vfs_open("/dev/stdout/child", file_access_mode::O_RDONLY),
+        Err(Fat32Error::NotADirectory)
+    );
+    assert_eq!(vfs_stat("/dev/stdout/", &mut by_alias), Err(Fat32Error::NotADirectory));
+    assert_eq!(vfs_access("/dev/stdout/"), Err(Fat32Error::NotADirectory));
+    assert_eq!(vfs_chdir("/dev/stdout"), Err(Fat32Error::NotADirectory));
+    assert_eq!(vfs_unlink("/dev/stdout"), Err(Fat32Error::PermissionDenied));
+
+    for fd in [cloexec, alias, STDOUT_FILENO, file] {
+        vfs_close(fd).expect("close descriptor");
+    }
+    crate::state::unmount(mount).expect("unmount filesystem");
+    forget_processes(&[pid]);
+}
+
+/// Tests that a standard-descriptor alias grants only the access its descriptor permits, follows
+/// the descriptor's backend, and names nothing once the descriptor is closed.
+#[test]
+fn descriptor_alias_follows_descriptor_access() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7415);
+    set_current_process(pid);
+
+    let (read_end, write_end): (c_int, c_int) = vfs_pipe().expect("create pipe");
+    assert_eq!((read_end, write_end), (STDIN_FILENO, STDOUT_FILENO));
+    let console: c_int =
+        alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stderr)))
+            .expect("console alloc");
+    assert_eq!(console, STDERR_FILENO);
+
+    assert_eq!(
+        vfs_open("/dev/stdin", file_access_mode::O_WRONLY),
+        Err(Fat32Error::PermissionDenied)
+    );
+    assert_eq!(vfs_open("/dev/stdin", file_access_mode::O_RDWR), Err(Fat32Error::PermissionDenied));
+    assert_eq!(
+        vfs_open("/dev/stdout", file_access_mode::O_RDONLY),
+        Err(Fat32Error::PermissionDenied)
+    );
+    assert_eq!(
+        vfs_open("/dev/stderr", file_access_mode::O_RDONLY),
+        Err(Fat32Error::PermissionDenied)
+    );
+    assert_eq!(
+        vfs_open("/dev/stdin", file_access_mode::O_ACCMODE),
+        Err(Fat32Error::InvalidArgument)
+    );
+
+    let reader: c_int =
+        vfs_open("/dev/stdin", file_access_mode::O_RDONLY).expect("open /dev/stdin");
+    let writer: c_int =
+        vfs_open("/dev/stdout", file_access_mode::O_WRONLY).expect("open /dev/stdout");
+    let error: c_int =
+        vfs_open("/dev/stderr", file_access_mode::O_WRONLY).expect("open /dev/stderr");
+    assert_eq!(vfs_pipe_id(reader), vfs_pipe_id(read_end));
+    assert_eq!(vfs_pipe_id(writer), vfs_pipe_id(write_end));
+    assert_eq!(vfs_resolve(error), Some((VfsRoute::Console, STDERR_FILENO)));
+
+    let mut metadata: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+    vfs_stat("/dev/stdin", &mut metadata).expect("stat /dev/stdin");
+    assert_eq!(metadata.st_mode & file_type::S_IFMT, file_type::S_IFIFO);
+    vfs_stat("/dev/stderr", &mut metadata).expect("stat /dev/stderr");
+    assert_eq!(metadata.st_mode & file_type::S_IFMT, file_type::S_IFCHR);
+
+    // A closed standard descriptor leaves its alias naming nothing.
+    vfs_close(STDERR_FILENO).expect("close stderr");
+    let stderr_flags: c_int = file_access_mode::O_WRONLY | file_creation_flags::O_CREAT;
+    assert_eq!(vfs_open("/dev/stderr", stderr_flags), Err(Fat32Error::NotFound));
+    assert_eq!(vfs_stat("/dev/stderr", &mut metadata), Err(Fat32Error::NotFound));
+    assert_eq!(vfs_access("/dev/stderr"), Err(Fat32Error::NotFound));
 
     forget_processes(&[pid]);
 }
