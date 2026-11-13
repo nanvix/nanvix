@@ -772,6 +772,11 @@ mod tests;
 #[cfg(verus_keep_ghost)]
 use ::vstd::prelude::*;
 
+// The `verus` feature pulls in `vstd`, but only Verus builds (`verus_keep_ghost`) use it. Mark it as
+// used in regular builds to silence Cargo's `unused_dependencies` lint.
+#[cfg(all(feature = "verus", not(verus_keep_ghost)))]
+use ::vstd as _;
+
 #[cfg(verus_keep_ghost)]
 verus! {
 

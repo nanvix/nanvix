@@ -23,10 +23,6 @@ syslog = { workspace = true, default-features = true, optional = true }
 log = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
 
-[build-dependencies]
-cc = { workspace = true }
-cfg-if = { workspace = true }
-
 [features]
 default = ["syslog"]
 std = []

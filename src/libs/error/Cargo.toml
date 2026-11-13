@@ -20,6 +20,7 @@ crate-type = ["lib"]
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
 sysapi = { workspace = true }
+# Only used by Verus builds; `src/lib.rs` marks it as used in other builds.
 vstd = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]

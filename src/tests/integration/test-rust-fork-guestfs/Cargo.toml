@@ -24,8 +24,6 @@ syscall = { workspace = true, features = ["syscall"] }
 syslog = { workspace = true, default-features = true }
 
 [build-dependencies]
-cc = { workspace = true }
-cfg-if = { workspace = true }
 fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
 
 [features]

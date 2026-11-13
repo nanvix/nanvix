@@ -35,7 +35,7 @@ static_assert = { workspace = true }
 syslog = { workspace = true, default-features = true, optional = true }
 sysalloc = { workspace = true, optional = true }
 sysapi = { workspace = true }
-type-safe = { workspace = true }
+type-safe = { workspace = true, optional = true }
 alloc = { version = "1.0.1", optional = true, package = "rustc-std-workspace-alloc" }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
@@ -52,7 +52,13 @@ syscall = [
     "dep:libc_stdlib",
 ]
 std = []
-dlfcn = ["dep:sysalloc", "dep:elf", "dep:fs-core", "dep:goblin"]
+dlfcn = [
+    "dep:sysalloc",
+    "dep:elf",
+    "dep:fs-core",
+    "dep:goblin",
+    "dep:type-safe",
+]
 rustc-dep-of-std = [
     "core",
     "alloc",

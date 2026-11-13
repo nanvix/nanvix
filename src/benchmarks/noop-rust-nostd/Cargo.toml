@@ -21,10 +21,6 @@ libc_string = { workspace = true }
 sys = { workspace = true }
 sysalloc = { workspace = true }
 
-[build-dependencies]
-cc = { workspace = true }
-cfg-if = { workspace = true }
-
 [features]
 default = ["panic"]
 trace = ["nvx/trace", "nvx-crt0/trace"]

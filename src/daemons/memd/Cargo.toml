@@ -23,10 +23,6 @@ proc = { workspace = true, features = ["syscall"] }
 libc_string = { workspace = true }
 syslog = { workspace = true, default-features = true }
 
-[build-dependencies]
-cc = { workspace = true }
-cfg-if = { workspace = true }
-
 [features]
 default = ["panic"]
 trace = ["nvx/trace", "syslog/trace", "nvx-crt0/trace"]

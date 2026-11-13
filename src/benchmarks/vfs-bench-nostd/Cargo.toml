@@ -28,8 +28,6 @@ vfs-bench-common = { workspace = true }
 
 [build-dependencies]
 build-utils = { workspace = true }
-cc = { workspace = true }
-cfg-if = { workspace = true }
 fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
 mkramfs = { workspace = true }
 rand = { workspace = true }

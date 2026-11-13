@@ -132,6 +132,12 @@ use ::sysapi::{
     sys_types::c_size_t,
 };
 
+// `syslog` is only used by the `no_std` `warn!` shim, but the `std` and `rustc-dep-of-std` features
+// still forward to it. Mark it as used so that `std` builds (host unit tests) do not trip Cargo's
+// `unused_dependencies` lint. The import is unconditional because `gen-headers` scans this crate
+// and does not support `feature` predicates in `cfg` attributes.
+use ::syslog as _;
+
 //==================================================================================================
 // Constants
 //==================================================================================================

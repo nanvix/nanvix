@@ -621,11 +621,7 @@ name = "echo-client"
 version = "0.24.133"
 dependencies = [
  "anyhow",
- "http-body-util",
- "hyper",
- "hyper-util",
  "log",
- "serde",
  "serde_json",
  "syslog",
  "tokio",
@@ -635,8 +631,6 @@ dependencies = [
 name = "echo-rust-nostd"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -1007,8 +1001,6 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 name = "hello-rust-nostd"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -1037,7 +1029,6 @@ dependencies = [
 name = "hostfsd"
 version = "0.24.133"
 dependencies = [
- "anyhow",
  "fs-core",
  "hostfs-api",
  "libc",
@@ -1045,7 +1036,6 @@ dependencies = [
  "sys",
  "sysapi",
  "syscall",
- "syslog",
  "tempfile",
 ]
 
@@ -1785,7 +1775,6 @@ version = "0.24.133"
 dependencies = [
  "sys",
  "sysapi",
- "syscall",
  "syslog",
 ]
 
@@ -1853,8 +1842,6 @@ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 name = "memd"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -1917,12 +1904,7 @@ version = "0.24.133"
 name = "mount-bench-nostd"
 version = "0.24.133"
 dependencies = [
- "build-utils",
- "cc",
- "cfg-if",
- "fatfs",
  "libc_string",
- "mkramfs",
  "nvx",
  "nvx-crt0",
  "sys",
@@ -2190,7 +2172,6 @@ dependencies = [
  "chrono",
  "log",
  "nanvix",
- "rand 0.10.3",
  "serde",
  "serde_json",
  "tempfile",
@@ -2257,7 +2238,6 @@ version = "0.24.133"
 name = "noop-rust-nostd"
 version = "0.24.133"
 dependencies = [
- "cc",
  "cfg-if",
  "libc_string",
  "nvx",
@@ -2461,8 +2441,6 @@ dependencies = [
 name = "proc"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "log",
  "static_assert",
@@ -2505,8 +2483,6 @@ dependencies = [
 name = "procd"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -2897,7 +2873,6 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 name = "snapshot-rust-nostd"
 version = "0.24.133"
 dependencies = [
- "cc",
  "cfg-if",
  "config",
  "libc_string",
@@ -2911,8 +2886,6 @@ dependencies = [
 name = "socket-echo-rust-nostd"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3121,8 +3094,6 @@ dependencies = [
 name = "syscomm"
 version = "0.24.133"
 dependencies = [
- "config",
- "libc",
  "log",
  "num_enum",
  "tokio",
@@ -3198,8 +3169,6 @@ name = "test-rust-arch"
 version = "0.24.133"
 dependencies = [
  "arch",
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3230,8 +3199,6 @@ dependencies = [
 name = "test-rust-cmdline-env-nostd"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3246,8 +3213,6 @@ dependencies = [
 name = "test-rust-cmdline-len"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3277,8 +3242,6 @@ dependencies = [
 name = "test-rust-env-nostd"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3293,8 +3256,6 @@ dependencies = [
 name = "test-rust-execv-big-target"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3310,8 +3271,6 @@ dependencies = [
 name = "test-rust-execv-target"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3326,8 +3285,6 @@ dependencies = [
 name = "test-rust-execv-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3342,8 +3299,6 @@ dependencies = [
 name = "test-rust-file"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3358,8 +3313,6 @@ dependencies = [
 name = "test-rust-fork-exec-argv-space-target"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3374,8 +3327,6 @@ dependencies = [
 name = "test-rust-fork-exec-argv-space-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3390,8 +3341,6 @@ dependencies = [
 name = "test-rust-fork-exec-loop-target"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3406,8 +3355,6 @@ dependencies = [
 name = "test-rust-fork-exec-loop-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3422,8 +3369,6 @@ dependencies = [
 name = "test-rust-fork-exec-pipe-bulk-target"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3439,8 +3384,6 @@ dependencies = [
 name = "test-rust-fork-exec-pipe-bulk-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3455,8 +3398,6 @@ dependencies = [
 name = "test-rust-fork-exec-pipe-loop-target"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3472,8 +3413,6 @@ dependencies = [
 name = "test-rust-fork-exec-pipe-loop-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3488,8 +3427,6 @@ dependencies = [
 name = "test-rust-fork-exec-vfsd-target"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3504,8 +3441,6 @@ dependencies = [
 name = "test-rust-fork-exec-vfsd-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3520,8 +3455,6 @@ dependencies = [
 name = "test-rust-fork-exec-write-target"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3536,8 +3469,6 @@ dependencies = [
 name = "test-rust-fork-exec-write-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3552,8 +3483,6 @@ dependencies = [
 name = "test-rust-fork-guestfs"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "fatfs",
  "libc_string",
  "nvx",
@@ -3569,8 +3498,6 @@ dependencies = [
 name = "test-rust-fork-hostfs"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3585,8 +3512,6 @@ dependencies = [
 name = "test-rust-fork-kcall"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3601,8 +3526,6 @@ dependencies = [
 name = "test-rust-getenv-nostd"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_stdlib",
  "libc_string",
  "nvx",
@@ -3618,8 +3541,6 @@ dependencies = [
 name = "test-rust-job-control"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3635,8 +3556,6 @@ name = "test-rust-kernel"
 version = "0.24.133"
 dependencies = [
  "arch",
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3651,8 +3570,6 @@ dependencies = [
 name = "test-rust-kill"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3667,8 +3584,6 @@ dependencies = [
 name = "test-rust-linux-app"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3683,8 +3598,6 @@ dependencies = [
 name = "test-rust-memory"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_stdlib",
  "libc_string",
@@ -3701,8 +3614,6 @@ dependencies = [
 name = "test-rust-misc"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_stdlib",
  "libc_string",
@@ -3720,8 +3631,6 @@ name = "test-rust-mmio-fault"
 version = "0.24.133"
 dependencies = [
  "arch",
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3734,8 +3643,6 @@ dependencies = [
 name = "test-rust-mount-multipart-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3750,8 +3657,6 @@ dependencies = [
 name = "test-rust-mount-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "hostfs-api",
  "libc_string",
  "nvx",
@@ -3767,8 +3672,6 @@ dependencies = [
 name = "test-rust-network"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3784,8 +3687,6 @@ dependencies = [
 name = "test-rust-pipe-dup2"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3800,8 +3701,6 @@ dependencies = [
 name = "test-rust-setenv"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_stdlib",
  "libc_string",
  "nvx",
@@ -3817,8 +3716,6 @@ dependencies = [
 name = "test-rust-sigsegv"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3842,8 +3739,6 @@ dependencies = [
 name = "test-rust-socket-fork"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -3858,8 +3753,6 @@ dependencies = [
 name = "test-rust-stress"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3876,8 +3769,6 @@ name = "test-rust-testd"
 version = "0.24.133"
 dependencies = [
  "arch",
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3893,8 +3784,6 @@ dependencies = [
 name = "test-rust-thread"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3910,8 +3799,6 @@ dependencies = [
 name = "test-rust-thread-vfs-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3927,8 +3814,6 @@ dependencies = [
 name = "test-rust-thread-wait"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "config",
  "libc_string",
  "nvx",
@@ -3945,8 +3830,6 @@ dependencies = [
 name = "test-rust-vfs-test"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "fatfs",
  "libc_string",
  "nvx",
@@ -3962,8 +3845,6 @@ dependencies = [
 name = "test-rust-waitpid"
 version = "0.24.133"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",
@@ -4306,7 +4187,6 @@ dependencies = [
  "multiimage",
  "nanvix-sandbox-config",
  "networkd",
- "profiler",
  "serde",
  "serde_cbor",
  "serde_json",
@@ -4410,7 +4290,6 @@ name = "vfs-bench-nostd"
 version = "0.24.133"
 dependencies = [
  "build-utils",
- "cc",
  "cfg-if",
  "fatfs",
  "libc_string",
@@ -4432,8 +4311,6 @@ name = "vfsd"
 version = "0.24.133"
 dependencies = [
  "arch",
- "cc",
- "cfg-if",
  "config",
  "hostfs-api",
  "libc_string",

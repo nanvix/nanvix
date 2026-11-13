@@ -24,6 +24,8 @@ log = { workspace = true, optional = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 static_assert = { workspace = true }
 sysapi = { workspace = true }
+# Only used by `no_std` builds, but the `std` and `rustc-dep-of-std` features forward to it;
+# `src/lib.rs` marks it as used for `std` builds.
 syslog = { workspace = true }
 
 [features]

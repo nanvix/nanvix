@@ -19,6 +19,11 @@
 
 extern crate alloc;
 
+// `sys` is only used by `no_std` builds. Mark it as used in `std` builds (host unit tests) to silence
+// Cargo's `unused_dependencies` lint.
+#[cfg(feature = "std")]
+use ::sys as _;
+
 //==================================================================================================
 // Modules
 //==================================================================================================

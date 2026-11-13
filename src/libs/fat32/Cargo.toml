@@ -16,6 +16,7 @@ crate-type = ["lib"]
 [dependencies]
 error = { workspace = true }
 fatfs = { workspace = true, features = ["alloc", "lfn"] }
+# Only used by `no_std` builds; `src/lib.rs` marks it as used in `std` builds.
 sys = { workspace = true }
 
 [features]
