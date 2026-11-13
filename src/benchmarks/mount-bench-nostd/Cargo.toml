@@ -25,8 +25,6 @@ syslog = { workspace = true, default-features = true }
 
 [build-dependencies]
 build-utils = { workspace = true }
-cc = { workspace = true }
-cfg-if = { workspace = true }
 fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
 mkramfs = { workspace = true }
 

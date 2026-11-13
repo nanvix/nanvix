@@ -23,9 +23,6 @@ vstd = { workspace = true }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
 
-[build-dependencies]
-cfg-if = { workspace = true }
-
 [features]
 default = ["microvm"]
 std = []

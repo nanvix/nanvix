@@ -20,10 +20,6 @@ nvx = { workspace = true }
 nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
 sysalloc = { workspace = true }
 
-[build-dependencies]
-cc = { workspace = true }
-cfg-if = { workspace = true }
-
 [features]
 default = ["panic"]
 trace = ["nvx/trace", "nvx-crt0/trace"]

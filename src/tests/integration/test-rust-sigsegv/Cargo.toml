@@ -21,10 +21,6 @@ sysalloc = { workspace = true }
 sys = { workspace = true, features = ["kcall"] }
 syslog = { workspace = true, default-features = true }
 
-[build-dependencies]
-cc = { workspace = true }
-cfg-if = { workspace = true }
-
 [features]
 default = ["panic"]
 trace = ["nvx/trace", "syslog/trace", "nvx-crt0/trace"]
