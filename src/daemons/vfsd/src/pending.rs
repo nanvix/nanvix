@@ -1358,6 +1358,7 @@ fn complete_open(
                 local_fd,
                 OpenAtResponse::ROUTE_VFS,
                 epoch,
+                local_fd,
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,
             );

@@ -246,6 +246,13 @@ pub struct OpenAtResponse {
     /// libposix stamps the resolution-cache entry for `ret` with this epoch so that a later plan
     /// can recognize a stale entry once descriptor numbers no longer encode their backend.
     pub epoch: u64,
+    /// The descriptor number the backend selected by `route` expects for `ret`.
+    ///
+    /// This is `ret` itself for vfsd-served and terminal descriptors, the standard stream number
+    /// for a console descriptor, and the `networkd` descriptor for a socket. An open may yield a
+    /// descriptor that shares an existing open file description, so the new descriptor may be
+    /// backed by any of these.
+    pub backend_fd: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(OpenAtResponse, SystemCallMessage::PAYLOAD_SIZE);
@@ -255,17 +262,23 @@ impl OpenAtResponse {
     pub const ROUTE_VFS: u32 = 0;
     /// Wire value for a terminal descriptor served by vfsd.
     pub const ROUTE_TERMINAL: u32 = 1;
+    /// Wire value for a console stream descriptor.
+    pub const ROUTE_CONSOLE: u32 = 2;
+    /// Wire value for a socket descriptor served by `networkd`.
+    pub const ROUTE_SOCKET: u32 = 3;
 
     pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
         - mem::size_of::<u32>()
-        - mem::size_of::<u64>();
+        - mem::size_of::<u64>()
+        - mem::size_of::<i32>();
 
-    pub fn new(ret: i32, route: u32, epoch: u64) -> Self {
+    pub fn new(ret: i32, route: u32, epoch: u64, backend_fd: i32) -> Self {
         Self {
             ret,
             route,
             epoch,
+            backend_fd,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -283,10 +296,11 @@ impl OpenAtResponse {
         ret: i32,
         route: u32,
         epoch: u64,
+        backend_fd: i32,
         source: ProcessIdentifier,
         message_type: MessageType,
     ) -> Message {
-        let message: OpenAtResponse = OpenAtResponse::new(ret, route, epoch);
+        let message: OpenAtResponse = OpenAtResponse::new(ret, route, epoch, backend_fd);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageKind::OpenAtResponse, message.into_bytes());
         let message: Message = Message::new(
