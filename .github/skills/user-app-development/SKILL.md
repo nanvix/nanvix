@@ -121,7 +121,13 @@ For low-level debugging, the standalone UserVM is still available:
    nvx = { workspace = true }
    sys = { workspace = true }
    syslog = { workspace = true }
+
+   [lints]
+   workspace = true
    ```
+
+   The `[lints]` table applies the workspace lints (`warnings = "deny"`, `clippy::all = "deny"`)
+   to the crate. Cargo warns about workspace members that lack it.
 
 3. Create `src/main.rs`:
 

@@ -121,6 +121,8 @@ Guest integration tests are `#![no_std]` binaries that run inside Nanvix:
    `src/tests/stress/<name>/` for stress tests).
 2. Structure similar to guest daemons
    (`#![no_std]`, `#![no_main]`).
+   End its `Cargo.toml` with a `[lints]` table holding `workspace = true`, so that the workspace
+   lints apply to the test. Cargo warns about workspace members that lack it.
 3. Add to `ALL_GUEST_TESTS` in the `Makefile`.
 4. Add to workspace `members` in root `Cargo.toml`.
 

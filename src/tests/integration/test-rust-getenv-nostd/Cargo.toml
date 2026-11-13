@@ -27,3 +27,6 @@ syslog = { workspace = true, default-features = true }
 [features]
 default = ["panic"]
 panic = ["nvx/panic", "nvx-crt0/panic"]
+
+[lints]
+workspace = true
