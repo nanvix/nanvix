@@ -11,11 +11,7 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-http-body-util = { workspace = true }
-hyper = { workspace = true, features = ["full"] }
-hyper-util = { workspace = true, features = ["full"] }
 log = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
 syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }

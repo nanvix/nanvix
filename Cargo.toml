@@ -239,7 +239,6 @@ num_enum = { version = "0.7.6", default-features = false }
 nvx = { path = "src/libs/nvx", default-features = false }
 nvx-crt0 = { path = "src/libs/nvx-crt0", default-features = false }
 oci-spec = "0.10.0"
-profiler = { path = "src/libs/profiler", default-features = false }
 protobuf = "3.7"
 portpicker = "0.1"
 proc = { path = "src/libs/proc", default-features = false }

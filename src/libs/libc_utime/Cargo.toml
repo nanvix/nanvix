@@ -16,7 +16,6 @@ crate-type = ["lib"]
 [dependencies]
 sys = { workspace = true }
 sysapi = { workspace = true }
-syscall = { workspace = true, features = ["syscall"] }
 syslog = { workspace = true, default-features = true }
 
 [features]

@@ -621,11 +621,7 @@ name = "echo-client"
 version = "0.24.133"
 dependencies = [
  "anyhow",
- "http-body-util",
- "hyper",
- "hyper-util",
  "log",
- "serde",
  "serde_json",
  "syslog",
  "tokio",
@@ -1033,7 +1029,6 @@ dependencies = [
 name = "hostfsd"
 version = "0.24.133"
 dependencies = [
- "anyhow",
  "fs-core",
  "hostfs-api",
  "libc",
@@ -1041,7 +1036,6 @@ dependencies = [
  "sys",
  "sysapi",
  "syscall",
- "syslog",
  "tempfile",
 ]
 
@@ -1781,7 +1775,6 @@ version = "0.24.133"
 dependencies = [
  "sys",
  "sysapi",
- "syscall",
  "syslog",
 ]
 
@@ -1911,10 +1904,7 @@ version = "0.24.133"
 name = "mount-bench-nostd"
 version = "0.24.133"
 dependencies = [
- "build-utils",
- "fatfs",
  "libc_string",
- "mkramfs",
  "nvx",
  "nvx-crt0",
  "sys",
@@ -2182,7 +2172,6 @@ dependencies = [
  "chrono",
  "log",
  "nanvix",
- "rand 0.10.3",
  "serde",
  "serde_json",
  "tempfile",
@@ -3105,8 +3094,6 @@ dependencies = [
 name = "syscomm"
 version = "0.24.133"
 dependencies = [
- "config",
- "libc",
  "log",
  "num_enum",
  "tokio",
@@ -4200,7 +4187,6 @@ dependencies = [
  "multiimage",
  "nanvix-sandbox-config",
  "networkd",
- "profiler",
  "serde",
  "serde_cbor",
  "serde_json",
