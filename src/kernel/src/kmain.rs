@@ -10,8 +10,10 @@
 #![forbid(clippy::large_stack_arrays)]
 #![allow(static_mut_refs)] // https://github.com/nanvix/kernel/issues/454
 #![allow(internal_features)]
-// Rust 1.100 stabilized allocator_api and never_type. Verus ships an older toolchain, which still
-// needs these gates.
+// Rust 1.100 stabilized never_type and most of allocator_api, but Verus ships its own toolchain,
+// which may be older and still need these gates. Allowing stable_features keeps them from failing
+// the build once Verus moves to Rust 1.100 or later; drop these three attributes then.
+#![cfg_attr(verus_keep_ghost, allow(stable_features))]
 #![cfg_attr(verus_keep_ghost, feature(allocator_api))] // kheap uses this.
 #![cfg_attr(verus_keep_ghost, feature(never_type))] // exit() uses this.
 #![feature(proc_macro_hygiene)] // statement-level verus_spec loop invariants need this.
