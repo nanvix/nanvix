@@ -169,8 +169,8 @@ pub fn main() -> Result<(), Error> {
 ///
 /// # Parameters
 ///
-/// - `readonly`: If `true`, the mount is registered as read-only, enabling
-///   negative caching and blocking write operations on the mount.
+/// - `readonly`: If `true`, the mount is registered as read-only, blocking
+///   write operations on the mount.
 fn mount_ramfs(readonly: bool) -> Result<(), Error> {
     // Acquire IO management capability.
     pm::__kcall_capctl(Capability::IoManagement, true)?;
