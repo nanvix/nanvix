@@ -14,6 +14,8 @@
 pub mod elf;
 mod kernel_vas;
 pub(crate) mod phys;
+#[cfg(feature = "test")]
+mod test;
 mod virt;
 
 //==================================================================================================
@@ -37,6 +39,9 @@ pub mod ustack;
 #[cfg(feature = "smp")]
 pub mod kredzone;
 
+#[cfg(feature = "test")]
+pub use test::test;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -47,6 +52,7 @@ use crate::hal::mem::{
     VirtualAddress,
 };
 use ::alloc::{
+    alloc::Layout,
     boxed::Box,
     collections::LinkedList,
     string::String,
@@ -195,7 +201,29 @@ fn out_of_memory() -> Error {
 /// Unlike [`Box::new`], this returns an [`ErrorCode::OutOfMemory`] error when the allocation fails
 /// instead of aborting, so callers can propagate the failure.
 pub fn try_box<T>(value: T) -> Result<Box<T>, Error> {
-    Box::try_new(value).map_err(|_| out_of_memory())
+    // This does what `Box::try_new()` does, with stable APIs only. `Box::try_new()` is unstable,
+    // and Rust 1.100 moved it from the `allocator_api` feature to `allocator_ext`, which older
+    // toolchains, such as the one that Verus ships, do not know. Avoiding it spares the kernel a
+    // feature gate that differs between toolchains.
+    let layout: Layout = Layout::new::<T>();
+
+    // `Box::new()` does not allocate memory for zero-sized types, so it cannot fail for them.
+    if layout.size() == 0 {
+        return Ok(Box::new(value));
+    }
+
+    // SAFETY: `layout` has a non-zero size.
+    let ptr: *mut T = unsafe { ::alloc::alloc::alloc(layout) }.cast::<T>();
+    if ptr.is_null() {
+        return Err(out_of_memory());
+    }
+
+    // SAFETY: `ptr` is non-null and was allocated by the global allocator with the layout of `T`,
+    // which is what `Box<T>` uses, so it is valid for writing a `T`, and the `Box` may own it.
+    unsafe {
+        ptr.write(value);
+        Ok(Box::from_raw(ptr))
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
