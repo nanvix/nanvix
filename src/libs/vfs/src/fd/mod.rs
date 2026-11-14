@@ -683,13 +683,20 @@ pub fn vfs_pipe_is_last_ref(fd: c_int) -> bool {
 ///
 /// This is called by vfsd after receiving a successful OPEN response from hostfsd.
 /// The returned FD is handed back to the user process.
+///
+/// `open_flags` are the flags the caller passed to `open`. The access mode and `O_NONBLOCK` are
+/// recorded as the status flags of the new open file description, exactly as for a local open, so
+/// `F_GETFL` and duplicates of the descriptor observe the access the host file was opened with.
 pub fn vfs_alloc_hostfs(
     remote_fd: i32,
     is_dir: bool,
     path: Option<String>,
+    open_flags: c_int,
 ) -> Result<c_int, Fat32Error> {
     let handle: VfsFileHandle = VfsFileHandle::HostFs(HostFsHandle::new(remote_fd, is_dir, path));
-    alloc_fd(handle)
+    let status_flags: c_int =
+        open_flags & (file_access_mode::O_ACCMODE | file_status_flags::O_NONBLOCK);
+    alloc_fd_with_status(handle, status_flags)
 }
 
 /// Returns the remote FD for a HostFs file descriptor, or `None` if the FD
@@ -1079,6 +1086,140 @@ pub fn vfs_poll(fd: c_int, events: c_short) -> Result<c_short, Fat32Error> {
 }
 
 //==================================================================================================
+// Standard Descriptor Aliases
+//==================================================================================================
+
+/// Returns the standard descriptor named by `path` if it is `/dev/stdin`, `/dev/stdout`, or
+/// `/dev/stderr`.
+fn descriptor_alias(path: &filesystem::VfsResolvedPath) -> Option<c_int> {
+    match path.device() {
+        Some(DevicePath::Alias(alias)) => Some(alias.fd()),
+        _ => None,
+    }
+}
+
+/// Maps a failed lookup of the descriptor named by an alias to the error the alias path reports.
+///
+/// A closed standard descriptor leaves its alias naming nothing, so the path reports
+/// [`Fat32Error::NotFound`] (POSIX `ENOENT`) rather than `EBADF`.
+fn alias_lookup_error(error: Fat32Error) -> Fat32Error {
+    match error {
+        Fat32Error::InvalidFd => Fat32Error::NotFound,
+        error => error,
+    }
+}
+
+/// Returns whether an open file description permits reads and writes, respectively.
+fn description_access(entry: &VfsEntry) -> (bool, bool) {
+    match &entry.handle {
+        VfsFileHandle::Pipe(end) => (!end.is_write(), end.is_write()),
+        VfsFileHandle::Console(handle) => {
+            let readable: bool = handle.stream() == ConsoleStream::Stdin;
+            (readable, !readable)
+        },
+        VfsFileHandle::Terminal(handle) => (handle.readable(), handle.writable()),
+        VfsFileHandle::Socket(_) => (true, true),
+        VfsFileHandle::Fat32(_)
+        | VfsFileHandle::DirectRead(_)
+        | VfsFileHandle::Directory(_)
+        | VfsFileHandle::HostFs(_)
+        | VfsFileHandle::Null(_) => match entry.status_flags & file_access_mode::O_ACCMODE {
+            file_access_mode::O_WRONLY => (false, true),
+            file_access_mode::O_RDWR => (true, true),
+            _ => (true, false),
+        },
+    }
+}
+
+/// Opens a standard-descriptor alias by duplicating the descriptor it names.
+///
+/// The new descriptor shares the named descriptor's open file description, as if by `dup`: both
+/// share one file offset and one set of status flags, and redirecting the standard descriptor with
+/// `dup2` redirects later alias opens as well. Because no open file description is created,
+/// `O_TRUNC`, `O_APPEND`, and `O_NONBLOCK` have no effect and a plain `O_CREAT` is accepted.
+/// `O_CLOEXEC` and `O_CLOFORK` set the new descriptor's flags.
+///
+/// # Errors
+///
+/// - [`Fat32Error::AlreadyExists`] for `O_CREAT | O_EXCL`, because the alias always exists.
+/// - [`Fat32Error::PermissionDenied`] for `O_EXEC`/`O_SEARCH`, or if the requested access mode asks
+///   for reads or writes that the named descriptor does not permit.
+/// - [`Fat32Error::InvalidArgument`] for an invalid access mode.
+/// - [`Fat32Error::NotFound`] if the named descriptor is not open.
+/// - [`Fat32Error::NotADirectory`] if `require_directory` is set and the named descriptor does not
+///   refer to a directory.
+/// - [`Fat32Error::TooManyOpenFiles`] if no descriptor is free.
+fn open_descriptor_alias(
+    target: c_int,
+    flags: c_int,
+    require_directory: bool,
+) -> Result<c_int, Fat32Error> {
+    if flags & file_creation_flags::O_CREAT != 0 && flags & file_creation_flags::O_EXCL != 0 {
+        return Err(Fat32Error::AlreadyExists);
+    }
+    if flags & file_access_mode::O_EXEC != 0 {
+        return Err(Fat32Error::PermissionDenied);
+    }
+    let (read, write): (bool, bool) = match flags & file_access_mode::O_ACCMODE {
+        file_access_mode::O_RDONLY => (true, false),
+        file_access_mode::O_WRONLY => (false, true),
+        file_access_mode::O_RDWR => (true, true),
+        _ => return Err(Fat32Error::InvalidArgument),
+    };
+    // Inspect the named description without holding the registry lock, as `vfs_resolve` does.
+    let file: OpenFile = entry_arc(target).map_err(alias_lookup_error)?;
+    {
+        let entry = file.lock();
+        if require_directory && !entry.handle.is_dir() {
+            return Err(Fat32Error::NotADirectory);
+        }
+        let (readable, writable): (bool, bool) = description_access(&entry);
+        if (read && !readable) || (write && !writable) {
+            return Err(Fat32Error::PermissionDenied);
+        }
+    }
+    let mut fd_flags: FdFlags = FdFlags::default();
+    fd_flags.set_close_on_exec(flags & file_creation_flags::O_CLOEXEC != 0);
+    fd_flags.set_close_on_fork(flags & file_creation_flags::O_CLOFORK != 0);
+    // `file` outlives the registry guard, so a reference that a concurrent close leaves last is
+    // never dropped under the registry lock.
+    let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+        PROCESSES.lock();
+    let state: &mut ProcessState = procs.get_mut(&current_pid()).ok_or(Fat32Error::NotFound)?;
+    install_duplicate(state, file.clone(), 0, fd_flags)
+}
+
+/// Reports the metadata of the descriptor named by a standard-descriptor alias.
+fn stat_descriptor_alias(
+    target: c_int,
+    require_directory: bool,
+    buf: &mut ::sysapi::sys_stat::stat,
+) -> Result<(), Fat32Error> {
+    vfs_fstat(target, buf).map_err(alias_lookup_error)?;
+    if require_directory && buf.st_mode & file_type::S_IFMT != file_type::S_IFDIR {
+        return Err(Fat32Error::NotADirectory);
+    }
+    Ok(())
+}
+
+/// Returns the hostfsd descriptor behind a standard-descriptor alias path.
+///
+/// Returns `Some` only if `path` names `/dev/stdin`, `/dev/stdout`, or `/dev/stderr` and the
+/// descriptor it names is open on the host filesystem, whose metadata only hostfsd can supply. A
+/// trailing separator additionally requires that descriptor to be a directory; otherwise `None` is
+/// returned and the local path lookup reports the error.
+pub fn vfs_descriptor_alias_hostfs_remote_fd(path: &ResolvedPath) -> Option<i32> {
+    let anchored: AnchoredPath = AnchoredPath::new(AT_FDCWD, String::from(path.as_str())).ok()?;
+    let path: filesystem::VfsResolvedPath = filesystem::VfsResolvedPath::new(anchored).ok()?;
+    let file: OpenFile = entry_arc(descriptor_alias(&path)?).ok()?;
+    let entry = file.lock();
+    if path.has_trailing_separator() && !entry.handle.is_dir() {
+        return None;
+    }
+    entry.handle.hostfs_remote_fd()
+}
+
+//==================================================================================================
 // POSIX-Compatible Operations
 //==================================================================================================
 
@@ -1090,6 +1231,11 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
 /// Opens a path whose descriptor provenance has already been captured.
 fn vfs_open_anchored(path: AnchoredPath, flags: c_int) -> Result<c_int, Fat32Error> {
     let path = filesystem::VfsResolvedPath::new(path)?;
+    if let Some(target) = descriptor_alias(&path) {
+        let require_directory: bool =
+            flags & file_creation_flags::O_DIRECTORY != 0 || path.has_trailing_separator();
+        return open_descriptor_alias(target, flags, require_directory);
+    }
     if matches!(path.device(), Some(DevicePath::Directory)) {
         if flags & file_creation_flags::O_CREAT != 0 && flags & file_creation_flags::O_EXCL != 0 {
             return Err(Fat32Error::AlreadyExists);
@@ -1561,13 +1707,26 @@ pub fn vfs_dup_from(oldfd: c_int, min_fd: c_int) -> Result<c_int, Fat32Error> {
         .get(&oldfd)
         .map(|slot| slot.file.clone())
         .ok_or(Fat32Error::InvalidFd)?;
+    // Default (empty) per-descriptor flags clear `FD_CLOEXEC` on the duplicate while the source
+    // slot's flags are left untouched.
+    install_duplicate(state, file, min_fd, FdFlags::default())
+}
+
+/// Installs `file` in the lowest free descriptor of `state` at or above `min_fd`.
+///
+/// The new slot shares `file` — and therefore its offset and status flags — with every other
+/// descriptor that refers to it, and carries `fd_flags` as its own per-descriptor flags.
+fn install_duplicate(
+    state: &mut ProcessState,
+    file: OpenFile,
+    min_fd: c_int,
+    fd_flags: FdFlags,
+) -> Result<c_int, Fat32Error> {
     // Lowest free descriptor at or above `min_fd` within the flat namespace.
     let fd: c_int = (min_fd..MAX_OPEN_FDS)
         .find(|candidate| !state.slots.contains_key(candidate))
         .ok_or(Fat32Error::TooManyOpenFiles)?;
-    // `Slot::new` starts from default (empty) per-descriptor flags, so `FD_CLOEXEC` is cleared on
-    // the duplicate while the source slot's flags are left untouched.
-    state.slots.insert(fd, Slot::new(file));
+    state.slots.insert(fd, Slot::with_fd_flags(file, fd_flags));
     // Duplicating a descriptor graduates a lazily-inserted placeholder into an active state and
     // mutates the table; advance the coherence generation.
     state.initialized = true;
@@ -1648,6 +1807,9 @@ fn vfs_stat_anchored(
     buf: &mut ::sysapi::sys_stat::stat,
 ) -> Result<(), Fat32Error> {
     let path = filesystem::VfsResolvedPath::new(path)?;
+    if let Some(target) = descriptor_alias(&path) {
+        return stat_descriptor_alias(target, path.has_trailing_separator(), buf);
+    }
     let info = filesystem::stat(&path)?;
     if let Some(device) = path.device() {
         *buf = devfs::posix_stat(device)?;
@@ -2137,8 +2299,17 @@ pub fn vfs_access(path: &str) -> Result<(), Fat32Error> {
 }
 
 /// Checks a path whose descriptor provenance has already been captured.
+///
+/// A standard-descriptor alias exists while the descriptor it names is open.
 fn vfs_access_anchored(path: AnchoredPath) -> Result<(), Fat32Error> {
     let path = filesystem::VfsResolvedPath::new(path)?;
+    if let Some(target) = descriptor_alias(&path) {
+        let file: OpenFile = entry_arc(target).map_err(alias_lookup_error)?;
+        if path.has_trailing_separator() && !file.lock().handle.is_dir() {
+            return Err(Fat32Error::NotADirectory);
+        }
+        return Ok(());
+    }
     filesystem::stat(&path).map(|_| ())
 }
 
@@ -2225,7 +2396,10 @@ pub fn vfs_getdents(
         let mut dent: posix_dent = posix_dent {
             d_ino: de.inode(),
             d_reclen: core::mem::size_of::<posix_dent>() as u16,
-            d_type: if de.is_dir() {
+            d_type: if de.is_descriptor_alias() {
+                // An alias takes the type of whatever its descriptor names at lookup time.
+                dirent_file_type::DT_UNKNOWN
+            } else if de.is_dir() {
                 dirent_file_type::DT_DIR
             } else if de.is_character_device() {
                 dirent_file_type::DT_CHR

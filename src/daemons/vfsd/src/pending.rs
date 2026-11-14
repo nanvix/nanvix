@@ -110,6 +110,8 @@ pub(crate) enum PendingOpKind {
     Open {
         /// Routed hostfs path retained so a directory handle can keep its guest path spelling.
         path: RoutedHostPath,
+        /// Flags the caller passed to `open`, recorded on the new open file description.
+        flags: i32,
     },
     /// close() — response is a status code; local FD has already been released.
     Close,
@@ -816,7 +818,9 @@ pub(crate) fn complete_pending_op(
     }
 
     match pending.kind {
-        PendingOpKind::Open { path } => complete_open(response_context, response_payload, path),
+        PendingOpKind::Open { path, flags } => {
+            complete_open(response_context, response_payload, path, flags)
+        },
         PendingOpKind::Close => complete_close(response_context, response_payload),
         PendingOpKind::Read { .. } => {
             ::syslog::error!("HostFS read reached non-read completion path");
@@ -1325,6 +1329,7 @@ fn complete_open(
     response_context: ResponseContext,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
     path: RoutedHostPath,
+    flags: i32,
 ) {
     use ::syscall::fcntl::message::OpenAtResponse;
 
@@ -1344,6 +1349,7 @@ fn complete_open(
         } else {
             None
         },
+        flags,
     ) {
         Ok(local_fd) => {
             let epoch = vfs_current_generation();
@@ -1352,6 +1358,7 @@ fn complete_open(
                 local_fd,
                 OpenAtResponse::ROUTE_VFS,
                 epoch,
+                local_fd,
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,
             );

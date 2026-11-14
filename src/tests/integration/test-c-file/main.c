@@ -140,6 +140,8 @@ int main(int argc, const char *argv[])
     test_special_file_types();
     test_device_namespace();
     test_terminal_devices();
+    test_stdio_aliases();
+    test_stdio_alias_redirection(); // requires open(), dup2(), stat() and unlink().
     test_ftruncate(); // requires open(), close(), fstat() and unlink().
     test_truncate();  // requires open(), close(), stat() and unlinkat().
     test_renameat();  // requires open(), close() and unlink().
@@ -159,6 +161,7 @@ int main(int argc, const char *argv[])
         assert(cwd != -1);
         assert(chdir("/mnt") == 0);
         test_hostfs_stat_identity(); // requires open(), stat(), lstat(), fstat(), and unlink().
+        test_stdio_alias_redirection(); // requires open(), dup2(), stat() and unlink().
         test_select();     // requires open(), close(), write(), read(), and unlink().
         test_linkat();     // requires open(), stat() and unlinkat().
         test_link();       // requires open(), stat() and unlinkat().

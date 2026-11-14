@@ -62,6 +62,12 @@ pub enum DevFsInodeId {
     Tty = 3,
     /// The `/dev/console` device.
     Console = 4,
+    /// The `/dev/stdin` descriptor alias.
+    Stdin = 5,
+    /// The `/dev/stdout` descriptor alias.
+    Stdout = 6,
+    /// The `/dev/stderr` descriptor alias.
+    Stderr = 7,
 }
 
 /// Fixed inode identifiers in the console-stream namespace.

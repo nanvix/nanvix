@@ -536,37 +536,49 @@ pub(crate) fn handle_fstat_with_hostfs(
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
     let req: FileStatRequest = FileStatRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
     if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(fd) {
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        if hostfs::send_stat_request(remote_fd, op_id).is_err() {
-            return Some(vec![build_error(source, ErrorCode::IoErr)]);
-        }
-        if pending
-            .insert(
-                op_id,
-                PendingOp {
-                    response_context,
-                    source_tid: source,
-                    source_pid,
-                    kind: PendingOpKind::Stat,
-                },
-            )
-            .is_err()
-        {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        return None;
+        return forward_hostfs_stat(response_context, remote_fd, pending);
     }
 
     Some(super::long::handle_fstat(source, msg))
+}
+
+/// Forwards a stat of an open hostfs descriptor to hostfsd and defers the reply.
+///
+/// Returns `None` once the request is pending, or the error reply to send immediately.
+fn forward_hostfs_stat(
+    response_context: ResponseContext,
+    remote_fd: i32,
+    pending: &mut PendingQueue,
+) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+    }
+    let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+    if hostfs::send_stat_request(remote_fd, op_id).is_err() {
+        return Some(vec![build_error(source, ErrorCode::IoErr)]);
+    }
+    if pending
+        .insert(
+            op_id,
+            PendingOp {
+                response_context,
+                source_tid: source,
+                source_pid,
+                kind: PendingOpKind::Stat,
+            },
+        )
+        .is_err()
+    {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+    }
+    None
 }
 
 pub(crate) fn handle_utimensat_with_hostfs(
@@ -634,7 +646,14 @@ pub(crate) fn handle_fstatat_with_hostfs(
     };
 
     let resolved = match resolved {
-        RoutedPath::Local(local) => return Some(long::handle_fstatat(source, local)),
+        RoutedPath::Local(local) => {
+            // A standard-descriptor alias reports its descriptor's metadata, which only hostfsd
+            // has for a host-backed descriptor.
+            if let Some(remote_fd) = ::vfs::fd::vfs_descriptor_alias_hostfs_remote_fd(&local) {
+                return forward_hostfs_stat(response_context, remote_fd, pending);
+            }
+            return Some(long::handle_fstatat(source, local));
+        },
         RoutedPath::Host(host) => host,
     };
     // Both stat modes are supported over hostfs. No-follow (`AT_SYMLINK_NOFOLLOW`)
@@ -1094,7 +1113,10 @@ pub(crate) fn handle_openat_with_hostfs(
                         response_context,
                         source_tid: source,
                         source_pid,
-                        kind: PendingOpKind::Open { path: resolved },
+                        kind: PendingOpKind::Open {
+                            path: resolved,
+                            flags: request.flags,
+                        },
                     },
                 )
                 .is_err()

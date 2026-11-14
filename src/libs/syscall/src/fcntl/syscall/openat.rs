@@ -98,17 +98,21 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
                     // with the table generation vfsd reported, so later descriptor syscalls resolve
                     // it from the cache instead of re-deriving it from the number.
                     if fd >= 0 {
-                        // `OpenAtResponse` is `#[repr(C, packed)]`, so `epoch` is not guaranteed to
-                        // be aligned. Read it through a raw pointer to avoid forming an unaligned
-                        // reference, which is undefined behavior on targets that fault on misaligned
-                        // loads.
+                        // `OpenAtResponse` is `#[repr(C, packed)]`, so its fields are not
+                        // guaranteed to be aligned. Read them through raw pointers to avoid forming
+                        // an unaligned reference, which is undefined behavior on targets that fault
+                        // on misaligned loads.
                         let route: u32 =
                             unsafe { ::core::ptr::addr_of!(response.route).read_unaligned() };
                         let epoch: u64 =
                             unsafe { ::core::ptr::addr_of!(response.epoch).read_unaligned() };
+                        let backend_fd: i32 =
+                            unsafe { ::core::ptr::addr_of!(response.backend_fd).read_unaligned() };
                         let route: crate::fdtable::Route = match route {
                             OpenAtResponse::ROUTE_VFS => crate::fdtable::Route::Vfs,
                             OpenAtResponse::ROUTE_TERMINAL => crate::fdtable::Route::Terminal,
+                            OpenAtResponse::ROUTE_CONSOLE => crate::fdtable::Route::Console,
+                            OpenAtResponse::ROUTE_SOCKET => crate::fdtable::Route::Socket,
                             _ => {
                                 return Err(Error::new(
                                     ErrorCode::InvalidMessage,
@@ -116,7 +120,7 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
                                 ));
                             },
                         };
-                        crate::fdtable::record(fd, route, fd, epoch);
+                        crate::fdtable::record(fd, route, backend_fd, epoch);
                     }
 
                     // Return file descriptor.

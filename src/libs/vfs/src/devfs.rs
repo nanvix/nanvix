@@ -33,6 +33,7 @@ use ::sys::pm::{
     UserIdentifier,
 };
 use ::sysapi::{
+    ffi::c_int,
     sys_stat::{
         file_mode,
         file_type,
@@ -43,6 +44,11 @@ use ::sysapi::{
         uid_t,
     },
     time::timespec,
+    unistd::{
+        STDERR_FILENO,
+        STDIN_FILENO,
+        STDOUT_FILENO,
+    },
 };
 
 //==================================================================================================
@@ -77,6 +83,21 @@ const CONSOLE_NAME: &str = "console";
 /// Absolute path of the console device.
 const CONSOLE_PATH: &str = "/dev/console";
 
+/// Name of the standard-input alias.
+const STDIN_NAME: &str = "stdin";
+/// Absolute path of the standard-input alias.
+const STDIN_PATH: &str = "/dev/stdin";
+
+/// Name of the standard-output alias.
+const STDOUT_NAME: &str = "stdout";
+/// Absolute path of the standard-output alias.
+const STDOUT_PATH: &str = "/dev/stdout";
+
+/// Name of the standard-error alias.
+const STDERR_NAME: &str = "stderr";
+/// Absolute path of the standard-error alias.
+const STDERR_PATH: &str = "/dev/stderr";
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -107,13 +128,49 @@ pub(crate) enum DevicePath {
     Tty,
     /// The system console.
     Console,
+    /// An alias for one of the calling process's standard descriptors.
+    Alias(DescriptorAlias),
     /// An unknown entry below `/dev`.
     Missing,
+}
+
+/// A device-namespace alias for a standard descriptor of the calling process.
+///
+/// Opening an alias duplicates the descriptor it names, so the result refers to whatever that
+/// descriptor currently refers to, including after redirection with `dup2`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DescriptorAlias {
+    /// `/dev/stdin`, which names descriptor `0`.
+    Stdin,
+    /// `/dev/stdout`, which names descriptor `1`.
+    Stdout,
+    /// `/dev/stderr`, which names descriptor `2`.
+    Stderr,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
+
+impl DescriptorAlias {
+    /// Returns the descriptor named by this alias.
+    pub(crate) fn fd(self) -> c_int {
+        match self {
+            DescriptorAlias::Stdin => STDIN_FILENO,
+            DescriptorAlias::Stdout => STDOUT_FILENO,
+            DescriptorAlias::Stderr => STDERR_FILENO,
+        }
+    }
+
+    /// Returns the stable inode identifier of this alias.
+    fn inode(self) -> DevFsInodeId {
+        match self {
+            DescriptorAlias::Stdin => DevFsInodeId::Stdin,
+            DescriptorAlias::Stdout => DevFsInodeId::Stdout,
+            DescriptorAlias::Stderr => DevFsInodeId::Stderr,
+        }
+    }
+}
 
 impl DevicePath {
     /// Returns metadata for an existing namespace entry.
@@ -137,6 +194,14 @@ impl DevicePath {
             DevicePath::Console => Some(DeviceMetadata {
                 inode: DevFsInodeId::Console,
                 special_device: Some(DevFsCharacterDeviceId::Console),
+                is_directory: false,
+            }),
+            // Callers that know the calling process report the named descriptor's metadata
+            // instead; this neutral fallback only lets path-based checks treat the alias as an
+            // existing non-directory entry.
+            DevicePath::Alias(alias) => Some(DeviceMetadata {
+                inode: alias.inode(),
+                special_device: None,
                 is_directory: false,
             }),
             DevicePath::Missing => None,
@@ -256,8 +321,13 @@ pub(crate) fn read_dir(path: DevicePath) -> Result<Vec<DirEntry>, Fat32Error> {
                 String::from(CONSOLE_NAME),
                 DevFsInodeId::Console.into(),
             ),
+            DirEntry::new_descriptor_alias(String::from(STDIN_NAME), DevFsInodeId::Stdin.into()),
+            DirEntry::new_descriptor_alias(String::from(STDOUT_NAME), DevFsInodeId::Stdout.into()),
+            DirEntry::new_descriptor_alias(String::from(STDERR_NAME), DevFsInodeId::Stderr.into()),
         ]),
-        DevicePath::Null | DevicePath::Tty | DevicePath::Console => Err(Fat32Error::NotADirectory),
+        DevicePath::Null | DevicePath::Tty | DevicePath::Console | DevicePath::Alias(_) => {
+            Err(Fat32Error::NotADirectory)
+        },
         DevicePath::Missing => Err(Fat32Error::NotFound),
     }
 }
@@ -274,7 +344,9 @@ fn validate_components(path: &str) -> Result<(), Fat32Error> {
     for component in path.split('/').filter(|component| !component.is_empty()) {
         if components.len() >= 2 && components[0] == DIRECTORY_NAME {
             return match components[1] {
-                NULL_NAME | TTY_NAME | CONSOLE_NAME => Err(Fat32Error::NotADirectory),
+                NULL_NAME | TTY_NAME | CONSOLE_NAME | STDIN_NAME | STDOUT_NAME | STDERR_NAME => {
+                    Err(Fat32Error::NotADirectory)
+                },
                 _ => Err(Fat32Error::NotFound),
             };
         }
@@ -296,6 +368,9 @@ fn resolve_normalized(path: &str) -> Option<DevicePath> {
         NULL_PATH => Some(DevicePath::Null),
         TTY_PATH => Some(DevicePath::Tty),
         CONSOLE_PATH => Some(DevicePath::Console),
+        STDIN_PATH => Some(DevicePath::Alias(DescriptorAlias::Stdin)),
+        STDOUT_PATH => Some(DevicePath::Alias(DescriptorAlias::Stdout)),
+        STDERR_PATH => Some(DevicePath::Alias(DescriptorAlias::Stderr)),
         path if path.starts_with(DIRECTORY_PREFIX) => Some(DevicePath::Missing),
         _ => None,
     }

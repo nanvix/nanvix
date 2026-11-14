@@ -50,6 +50,9 @@ fn checked_resolution_normalizes_paths() {
     assert_eq!(resolve("/dev"), Ok(Some(DevicePath::Directory)));
     assert_eq!(resolve("/tmp/work/../../dev//./console"), Ok(Some(DevicePath::Console)));
     assert_eq!(resolve("/dev/../tmp"), Ok(None));
+    assert_eq!(resolve("/dev//./stdin"), Ok(Some(DevicePath::Alias(DescriptorAlias::Stdin))));
+    assert_eq!(resolve("/dev/stdout"), Ok(Some(DevicePath::Alias(DescriptorAlias::Stdout))));
+    assert_eq!(resolve("/dev/stderr"), Ok(Some(DevicePath::Alias(DescriptorAlias::Stderr))));
 }
 
 #[test]
@@ -58,6 +61,8 @@ fn validates_traversal_through_device_nodes() {
     assert_eq!(resolve("/dev/unknown/child"), Err(Fat32Error::NotFound));
     assert_eq!(resolve("/dev/null/../console"), Err(Fat32Error::NotADirectory));
     assert_eq!(resolve("/dev/console/child"), Err(Fat32Error::NotADirectory));
+    assert_eq!(resolve("/dev/stdin/child"), Err(Fat32Error::NotADirectory));
+    assert_eq!(resolve("/dev/stderr/../null"), Err(Fat32Error::NotADirectory));
 }
 
 #[test]
@@ -78,11 +83,14 @@ fn synthesizes_stat_for_classified_devices() {
 #[test]
 fn reads_only_the_device_directory() {
     let entries: Vec<DirEntry> = read_dir(DevicePath::Directory).expect("devfs directory");
-    assert_eq!(entries.len(), 3);
-    assert_eq!(entries[0].name(), NULL_NAME);
-    assert_eq!(entries[1].name(), TTY_NAME);
-    assert_eq!(entries[2].name(), CONSOLE_NAME);
+    let names: Vec<&str> = entries.iter().map(DirEntry::name).collect();
+    assert_eq!(names, ["null", "tty", "console", "stdin", "stdout", "stderr"]);
+    assert!(entries[..3].iter().all(DirEntry::is_character_device));
+    assert!(entries[3..]
+        .iter()
+        .all(|entry| entry.is_descriptor_alias() && !entry.is_character_device()));
     assert_eq!(read_dir(DevicePath::Null), Err(Fat32Error::NotADirectory));
+    assert_eq!(read_dir(DevicePath::Alias(DescriptorAlias::Stdin)), Err(Fat32Error::NotADirectory));
     assert_eq!(read_dir(DevicePath::Missing), Err(Fat32Error::NotFound));
 }
 
