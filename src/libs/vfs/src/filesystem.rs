@@ -158,6 +158,9 @@ pub(crate) fn open_anchored(path: AnchoredPath) -> Result<File, Fat32Error> {
 /// `None` if the file is empty, not found, fragmented, or no mount handles
 /// the path.
 ///
+/// The mount that serves the path answers from its metadata cache when it
+/// can, including for paths that have no data to read in place.
+///
 /// # Parameters
 ///
 /// - `path`: The path to the file.
@@ -166,12 +169,11 @@ pub(crate) fn file_raw_region(path: &VfsResolvedPath) -> Option<(*const u8, usiz
         return None;
     }
     let fat_path: &FatPath = path.fat().ok()?;
-    state::with_vfs(|vfs| {
-        let mount: &crate::mount::Mount = vfs
-            .get_mount(fat_path.mount_index)
+    state::with_vfs_mut(|vfs| {
+        let mount: &mut crate::mount::Mount = vfs
+            .get_mount_mut(fat_path.mount_index)
             .ok_or(Fat32Error::NotFound)?;
         mount
-            .fat()
             .file_raw_region(&fat_path.path)
             .ok_or(Fat32Error::NotFound)
     })
@@ -693,7 +695,7 @@ pub(crate) fn open(
             .ok_or(Fat32Error::NotFound)?;
 
         // If any ancestor component is a regular file, return ENOTDIR.
-        if mount.fat().has_non_directory_ancestor(&fat_path.path) {
+        if mount.has_non_directory_ancestor(&fat_path.path) {
             return Err(Fat32Error::NotADirectory);
         }
         let mount_path: String = String::from(mount.path());
