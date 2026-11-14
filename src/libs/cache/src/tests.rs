@@ -93,3 +93,46 @@ fn overwrite_does_not_evict() {
     assert_eq!(*cache.get(&"a").unwrap(), 10);
     assert_eq!(*cache.get(&"b").unwrap(), 2);
 }
+
+#[test]
+fn get_with_borrowed_key() {
+    let mut cache: Cache<String, i32> = Cache::new(4);
+    cache.put(String::from("a"), 1);
+    // A `String` key is looked up with a `&str`, without allocating.
+    assert_eq!(*cache.get("a").expect("entry should exist"), 1);
+    assert!(cache.get("missing").is_none());
+}
+
+#[test]
+fn get_with_borrowed_key_refreshes_lru_order() {
+    let mut cache: Cache<String, i32> = Cache::new(2);
+    cache.put(String::from("a"), 1);
+    cache.put(String::from("b"), 2);
+    // Touch "a" through a borrowed key so "b" becomes LRU.
+    let _ = cache.get("a");
+    cache.put(String::from("c"), 3);
+    assert_eq!(*cache.get("a").unwrap(), 1);
+    assert!(cache.get("b").is_none());
+    assert_eq!(*cache.get("c").unwrap(), 3);
+}
+
+#[test]
+fn get_with_borrowed_key_allows_mutation() {
+    let mut cache: Cache<String, i32> = Cache::new(4);
+    cache.put(String::from("a"), 1);
+    *cache.get("a").unwrap() = 5;
+    assert_eq!(*cache.get("a").unwrap(), 5);
+}
+
+#[test]
+fn remove_with_borrowed_key() {
+    let mut cache: Cache<String, i32> = Cache::new(4);
+    cache.put(String::from("a"), 1);
+    cache.put(String::from("b"), 2);
+    cache.remove("a");
+    assert!(cache.get("a").is_none());
+    assert_eq!(*cache.get("b").unwrap(), 2);
+    // Removing a key that is absent is a no-op.
+    cache.remove("ghost");
+    assert_eq!(*cache.get("b").unwrap(), 2);
+}
