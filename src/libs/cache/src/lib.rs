@@ -39,9 +39,12 @@
 extern crate alloc;
 
 use ::alloc::collections::BTreeMap;
-use ::core::ops::{
-    Deref,
-    DerefMut,
+use ::core::{
+    borrow::Borrow,
+    ops::{
+        Deref,
+        DerefMut,
+    },
 };
 
 //==================================================================================================
@@ -134,15 +137,23 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// Looks up a cached value and bumps its LRU counter on hit.
     ///
+    /// The key may be given in any borrowed form of `K`, as long as the ordering of the borrowed
+    /// form matches the ordering of `K`. For example, a `Cache<String, V>` can be queried with a
+    /// `&str`, without allocating a `String` for the lookup.
+    ///
     /// # Parameters
     ///
-    /// - `key`: The cache key to look up.
+    /// - `key`: The cache key to look up, in any borrowed form of `K`.
     ///
     /// # Returns
     ///
     /// An RAII guard providing access to the cached value, or `None` on cache miss.
     ///
-    pub fn get(&mut self, key: &K) -> Option<CacheGuard<'_, V>> {
+    pub fn get<Q>(&mut self, key: &Q) -> Option<CacheGuard<'_, V>>
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
         if let Some(entry) = self.entries.get_mut(key) {
             self.counter += 1;
             entry.last_used = self.counter;
@@ -198,11 +209,17 @@ impl<K: Ord + Clone, V> Cache<K, V> {
     ///
     /// Removes a specific key.
     ///
+    /// Like [`Cache::get()`], the key may be given in any borrowed form of `K`.
+    ///
     /// # Parameters
     ///
-    /// - `key`: The cache key to remove.
+    /// - `key`: The cache key to remove, in any borrowed form of `K`.
     ///
-    pub fn remove(&mut self, key: &K) {
+    pub fn remove<Q>(&mut self, key: &Q)
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
         self.entries.remove(key);
     }
 
