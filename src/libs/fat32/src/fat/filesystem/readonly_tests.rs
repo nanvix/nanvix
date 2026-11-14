@@ -179,6 +179,45 @@ fn readonly_read_dir() {
     assert!(names.contains(&"subdir"), "should contain subdir");
 }
 
+// -- Read-only epoch ---------------------------------------------------------
+
+/// Tests that the epoch of a read-only filesystem does not change, whatever is done to it.
+#[test]
+fn readonly_epoch_never_changes() {
+    let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+    let before: u64 = fat.epoch();
+
+    fat.stat(&test_path("hello.txt"))
+        .expect("stat should succeed");
+    fat.read_dir(&test_path(""))
+        .expect("read_dir should succeed");
+    assert!(fat.file_raw_region(&test_path("hello.txt")).is_some(), "file should be contiguous");
+    {
+        let mut file = fat
+            .open(&test_path("hello.txt"), true, false, false, false)
+            .expect("open for read should succeed");
+        let mut buf: [u8; 64] = [0u8; 64];
+        file.read(&mut buf).expect("read should succeed");
+    }
+
+    // Every modification is rejected.
+    assert!(fat
+        .open(&test_path("hello.txt"), true, true, false, true)
+        .is_err());
+    assert!(fat.create_new(&test_path("new.txt"), true, true).is_err());
+    assert!(fat.mkdir(&test_path("newdir")).is_err());
+    assert!(fat.rmdir(&test_path("subdir")).is_err());
+    assert!(fat.unlink(&test_path("hello.txt")).is_err());
+    assert!(fat
+        .rename(&test_path("hello.txt"), &test_path("renamed.txt"))
+        .is_err());
+    assert!(fat
+        .set_times(&test_path("hello.txt"), Some(1_718_454_600), None)
+        .is_err());
+
+    assert_eq!(fat.epoch(), before, "the epoch of a read-only filesystem should not change");
+}
+
 // -- Read-only write guards --------------------------------------------------
 
 /// Tests that omitting both timestamps does not resolve the path.

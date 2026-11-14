@@ -181,6 +181,10 @@ pub fn is_initialized() -> bool {
 /// - `ptr` points to valid memory containing a FAT filesystem image.
 /// - The memory remains valid for the lifetime of the mount.
 /// - The memory region is at least `size` bytes.
+/// - Nothing else modifies the memory region while it is mounted, because a mount only tracks the
+///   modifications that it makes itself (see [`Fat::epoch()`]). In particular, the region must not
+///   be mounted twice, unless both mounts are read-only, as a mount does not see what the other
+///   one does.
 pub unsafe fn mount_image(
     mount_path: &str,
     ptr: *mut u8,
@@ -191,7 +195,7 @@ pub unsafe fn mount_image(
         return Err(Fat32Error::InvalidPath);
     }
 
-    // SAFETY: Caller guarantees memory region validity.
+    // SAFETY: Caller guarantees memory region validity, and that nothing else modifies it.
     let fat: Fat = if readonly {
         unsafe { Fat::from_memory_readonly(ptr as *const u8, size)? }
     } else {
@@ -257,7 +261,8 @@ pub fn create_mount(mount_path: &str, size: usize) -> Result<(), Fat32Error> {
     unsafe { format_fat_in_memory(memory_ptr, size)? };
 
     // Create Fat from the formatted memory.
-    // SAFETY: memory_ptr points to valid FAT image of `size` bytes.
+    // SAFETY: memory_ptr points to valid FAT image of `size` bytes, which this function allocated
+    // and shares with nothing but the mount, so nothing else modifies it.
     let fat: Fat = unsafe { Fat::from_memory(memory_ptr, size)? };
 
     let mount: Mount = Mount::new(String::from(mount_path), fat, false)?;
