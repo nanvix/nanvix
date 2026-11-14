@@ -15,6 +15,7 @@
 use crate::{
     error::Fat32Error,
     fat::{
+        epoch::Epoch,
         error::map_fatfs_error,
         InternalFatFile,
         ReadOnlyInternalFatFile,
@@ -103,6 +104,13 @@ macro_rules! dispatch_file {
 /// through this handle change the size that it sees, and these keep the cached
 /// size up to date.
 ///
+/// # Modification Epoch
+///
+/// A write or a truncation through this handle modifies the filesystem without
+/// going through [`Fat`](super::Fat) again, so this handle advances the
+/// modification epoch of the filesystem, see [`Fat::epoch()`](super::Fat::epoch),
+/// before it modifies anything.
+///
 /// # Thread Safety
 ///
 /// This type is intentionally `!Send + !Sync` because file handles have
@@ -119,6 +127,8 @@ pub struct FatFile<'a> {
     can_write: bool,
     /// Cached file size in bytes, or `None` if it must be queried by seeking.
     cached_len: Option<u64>,
+    /// Modification epoch of the filesystem that this file belongs to.
+    epoch: &'a Epoch,
     /// Marker to make this type `!Send + !Sync`.
     _not_send_sync: PhantomData<*const ()>,
 }
@@ -135,12 +145,19 @@ impl<'a> FatFile<'a> {
     /// - `inner`: The underlying fatfs file handle (read-write or read-only).
     /// - `can_read`: Whether the file is open for reading.
     /// - `can_write`: Whether the file is open for writing.
-    pub(super) fn new(inner: FatFileInner<'a>, can_read: bool, can_write: bool) -> Self {
+    /// - `epoch`: Modification epoch of the filesystem that the file belongs to.
+    pub(super) fn new(
+        inner: FatFileInner<'a>,
+        can_read: bool,
+        can_write: bool,
+        epoch: &'a Epoch,
+    ) -> Self {
         Self {
             inner,
             can_read,
             can_write,
             cached_len: None,
+            epoch,
             _not_send_sync: PhantomData,
         }
     }
@@ -238,6 +255,7 @@ impl<'a> FatFile<'a> {
         if !self.can_write {
             return Err(Fat32Error::ReadOnly);
         }
+        self.epoch.advance();
         let result: Result<usize, Fat32Error> =
             dispatch_file!(self, |file| { file.write(buf).map_err(map_fatfs_error) });
         // A write that ends past the end of the file grows the file up to where the write ends.
@@ -288,6 +306,7 @@ impl<'a> FatFile<'a> {
         if !self.can_write {
             return Err(Fat32Error::ReadOnly);
         }
+        self.epoch.advance();
         let result: Result<(), Fat32Error> =
             dispatch_file!(self, |file| { file.truncate().map_err(map_fatfs_error) });
         // Truncating sets the size of the file to the current position. Drop the cached size if
