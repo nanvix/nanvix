@@ -10,6 +10,7 @@
 use crate::{
     error::Fat32Error,
     fat::{
+        epoch::Epoch,
         error::map_fatfs_error,
         file::{
             FatFile,
@@ -79,6 +80,8 @@ pub struct Fat {
     inner: FatInner,
     /// Base pointer to the FAT image in memory (for zero-copy file access).
     base_ptr: *const u8,
+    /// Modification epoch, shared with the files opened from this filesystem.
+    epoch: Epoch,
 }
 
 // SAFETY: Fat is only accessed through the VFS Mutex, which ensures
@@ -116,6 +119,11 @@ impl Fat {
     ///
     /// The caller must ensure the memory region is valid, properly aligned,
     /// and remains valid for the lifetime of this [`Fat`].
+    ///
+    /// The caller must also ensure that nothing else modifies the memory region for the lifetime
+    /// of this [`Fat`], such as another [`Fat`] over the same region, because
+    /// [`Fat::epoch()`] only tracks the modifications that are made through this [`Fat`] and the
+    /// files that are opened from it.
     pub unsafe fn from_memory(ptr: *mut u8, size: usize) -> Result<Self, Fat32Error> {
         // SAFETY: Caller guarantees memory region validity.
         let storage: RawMemoryStorage = unsafe { RawMemoryStorage::new(ptr, size)? };
@@ -125,6 +133,7 @@ impl Fat {
         Ok(Self {
             inner: FatInner::ReadWrite(fs),
             base_ptr: ptr as *const u8,
+            epoch: Epoch::new(),
         })
     }
 
@@ -152,6 +161,9 @@ impl Fat {
     ///
     /// The caller must ensure the memory region is valid, properly aligned,
     /// and remains valid for the lifetime of this [`Fat`].
+    ///
+    /// The caller must also ensure that nothing modifies the memory region for the lifetime of
+    /// this [`Fat`], because [`Fat::epoch()`] never changes for a read-only filesystem.
     pub unsafe fn from_memory_readonly(ptr: *const u8, size: usize) -> Result<Self, Fat32Error> {
         // SAFETY: Caller guarantees memory region validity.
         let storage: ReadOnlyMemoryStorage = unsafe { ReadOnlyMemoryStorage::new(ptr, size)? };
@@ -161,7 +173,33 @@ impl Fat {
         Ok(Self {
             inner: FatInner::ReadOnly(fs),
             base_ptr: ptr,
+            epoch: Epoch::new(),
         })
+    }
+
+    /// Returns the modification epoch of this filesystem.
+    ///
+    /// # Description
+    ///
+    /// The epoch changes whenever the filesystem is, or is about to be, modified through this
+    /// [`Fat`] or through any [`FatFile`] opened from it, and it never changes for a read-only
+    /// filesystem. A caller that caches the result of a read-only query, such as [`Fat::stat()`]
+    /// or [`Fat::file_raw_region()`], can record the epoch along with the result, and trust the
+    /// result for as long as the epoch stays the same.
+    ///
+    /// The epoch may also change without the filesystem having changed, for example when an
+    /// operation fails after it has started.
+    ///
+    /// Modifications that are made to the memory region by other means are not tracked, see the
+    /// safety requirements of [`Fat::from_memory()`].
+    ///
+    /// # Returns
+    ///
+    /// The current epoch. Only whether two epochs of the same filesystem are equal is meaningful.
+    #[inline]
+    #[must_use]
+    pub fn epoch(&self) -> u64 {
+        self.epoch.get()
     }
 
     /// Opens a file with the specified mode.
@@ -205,24 +243,27 @@ impl Fat {
                 match root.open_file(path) {
                     Ok(mut file) => {
                         if truncate {
+                            self.epoch.advance();
                             file.truncate().map_err(map_fatfs_error)?;
                             Write::flush(&mut file).map_err(map_fatfs_error)?;
                         }
-                        Ok(FatFile::new(file.into_file_inner(), read, write))
+                        Ok(FatFile::new(file.into_file_inner(), read, write, &self.epoch))
                     },
                     Err(::fatfs::Error::NotFound) => {
+                        self.epoch.advance();
                         let file = root.create_file(path).map_err(map_fatfs_error)?;
-                        Ok(FatFile::new(file.into_file_inner(), read, write))
+                        Ok(FatFile::new(file.into_file_inner(), read, write, &self.epoch))
                     },
                     Err(e) => Err(map_fatfs_error(e)),
                 }
             } else {
                 let mut file = root.open_file(path).map_err(map_fatfs_error)?;
                 if truncate && write {
+                    self.epoch.advance();
                     file.truncate().map_err(map_fatfs_error)?;
                     Write::flush(&mut file).map_err(map_fatfs_error)?;
                 }
-                Ok(FatFile::new(file.into_file_inner(), read, write))
+                Ok(FatFile::new(file.into_file_inner(), read, write, &self.epoch))
             }
         })
     }
@@ -264,8 +305,9 @@ impl Fat {
                 return Err(Fat32Error::AlreadyExists);
             }
 
+            self.epoch.advance();
             let file = root.create_file(path).map_err(map_fatfs_error)?;
-            Ok(FatFile::new(file.into_file_inner(), read, write))
+            Ok(FatFile::new(file.into_file_inner(), read, write, &self.epoch))
         })
     }
 
@@ -312,6 +354,7 @@ impl Fat {
                 Err(_) if root.open_dir(path).is_ok() => return Ok(()),
                 Err(e) => return Err(map_fatfs_error(e)),
             };
+            self.epoch.advance();
             // The setters are deprecated upstream but are the only write path.
             #[allow(deprecated)]
             {
@@ -542,6 +585,7 @@ impl Fat {
                 return Err(Fat32Error::AlreadyExists);
             }
 
+            self.epoch.advance();
             root.create_dir(path_str)
                 .map_err(|e| match map_fatfs_error(e) {
                     Fat32Error::InvalidPath if self.has_non_directory_ancestor(path) => {
@@ -586,6 +630,7 @@ impl Fat {
             // Verify directory exists before removing.
             root.open_dir(path).map_err(map_fatfs_error)?;
 
+            self.epoch.advance();
             root.remove(path).map_err(map_fatfs_error)
         })
     }
@@ -622,6 +667,7 @@ impl Fat {
             // Verify file exists before removing.
             root.open_file(path).map_err(map_fatfs_error)?;
 
+            self.epoch.advance();
             root.remove(path).map_err(map_fatfs_error)
         })
     }
@@ -655,6 +701,7 @@ impl Fat {
 
         dispatch_fs!(self, |fs| {
             let root = fs.root_dir();
+            self.epoch.advance();
             root.rename(old_path, &root, new_path)
                 .map_err(map_fatfs_error)
         })
