@@ -180,6 +180,9 @@ pub(crate) fn file_raw_region(path: &VfsResolvedPath) -> Option<(*const u8, usiz
 
 /// Gets file metadata without opening the file.
 ///
+/// The mount that serves the path answers from its metadata cache when it can, including for paths
+/// that do not exist.
+///
 /// # Parameters
 ///
 /// - `path`: The path to query.
@@ -207,22 +210,16 @@ pub(crate) fn stat(path: &VfsResolvedPath) -> Result<Stat, Fat32Error> {
         return Ok(Stat::new(0, true, FAT_EPOCH_SECS, FAT_EPOCH_SECS, FAT_EPOCH_SECS));
     }
 
-    state::with_vfs(|vfs| {
+    state::with_vfs_mut(|vfs| {
         let mount = vfs
-            .get_mount(fat_path.mount_index)
+            .get_mount_mut(fat_path.mount_index)
             .ok_or(Fat32Error::NotFound)?;
-        let fat_stat = mount.fat().stat(&fat_path.path)?;
+        let stat: Stat = mount.stat(&fat_path.path)?;
         // POSIX treats a trailing slash as a directory requirement.
-        if path.has_trailing_separator() && !fat_stat.is_dir {
+        if path.has_trailing_separator() && !stat.is_dir() {
             return Err(Fat32Error::NotADirectory);
         }
-        Ok(Stat::new(
-            fat_stat.size,
-            fat_stat.is_dir,
-            fat_stat.atime,
-            fat_stat.mtime,
-            fat_stat.ctime,
-        ))
+        Ok(stat)
     })
 }
 
@@ -314,7 +311,7 @@ pub(crate) fn mkdir(path: AnchoredPath) -> Result<(), Fat32Error> {
         let mount = vfs
             .get_mount_mut(fat_path.mount_index)
             .ok_or(Fat32Error::NotFound)?;
-        let fat = mount.fat_mut();
+        let fat = mount.fat();
 
         // If path already exists (file or dir), return AlreadyExists.
         if fat.stat(&fat_path.path).is_ok() {
@@ -355,7 +352,7 @@ pub(crate) fn rmdir(path: AnchoredPath) -> Result<(), Fat32Error> {
         let mount = vfs
             .get_mount_mut(fat_path.mount_index)
             .ok_or(Fat32Error::NotFound)?;
-        mount.fat_mut().rmdir(&fat_path.path)
+        mount.fat().rmdir(&fat_path.path)
     })
 }
 
@@ -388,7 +385,7 @@ pub(crate) fn unlink(path: AnchoredPath) -> Result<(), Fat32Error> {
         let mount = vfs
             .get_mount_mut(fat_path.mount_index)
             .ok_or(Fat32Error::NotFound)?;
-        mount.fat_mut().unlink(&fat_path.path)
+        mount.fat().unlink(&fat_path.path)
     })
 }
 
@@ -683,10 +680,6 @@ pub(crate) fn open(
     }
 
     // Reject write/create/truncate on read-only mounts.
-    // NOTE: This gate is also what keeps the negative cache consistent —
-    // negative entries are only populated for read-only mounts, so any
-    // O_CREAT that could create a file is blocked here before it reaches
-    // the FAT layer, preventing stale negative-cache entries.
     if write || create || create_new || truncate {
         check_writable(fat_path.mount_index)?;
     }
@@ -706,10 +699,10 @@ pub(crate) fn open(
         let mount_path: String = String::from(mount.path());
 
         let fat_file = if create_new {
-            mount.fat_mut().create_new(&fat_path.path, read, write)?
+            mount.fat().create_new(&fat_path.path, read, write)?
         } else {
             mount
-                .fat_mut()
+                .fat()
                 .open(&fat_path.path, read, write, create, truncate)?
         };
 

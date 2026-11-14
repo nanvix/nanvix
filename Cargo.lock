@@ -4271,6 +4271,7 @@ name = "vfs"
 version = "0.24.138"
 dependencies = [
  "arch",
+ "cache",
  "config",
  "error",
  "fat32",
