@@ -5,6 +5,10 @@
 //!
 //! This crate is `no_std`-compatible so it can be used by both the guest (`vfs-bench-nostd`) and
 //! the host benchmark driver (`nanvix-bench`).
+//!
+//! The guest is an ordinary process of a standalone image: every operation that it runs reaches the
+//! benchmark image through the system call interface and the VFS daemon, which is the sole owner of
+//! that image. The guest does not take part in mounting it.
 
 #![no_std]
 #![deny(clippy::all)]
@@ -21,25 +25,23 @@ const OP_NOOP: u8 = 0x00;
 const OP_STAT: u8 = 0x01;
 /// Opcode for `open()` + `close()`.
 const OP_OPEN_CLOSE: u8 = 0x02;
-/// Opcode for `read_dir()`.
+/// Opcode for `opendir()` + `readdir()` + `closedir()`.
 const OP_READDIR: u8 = 0x07;
-/// Opcode for scratch directory creation + teardown.
-const OP_CREATE_SCRATCH: u8 = 0x0A;
 /// Opcode for sequential read.
 const OP_SEQ_READ: u8 = 0x03;
 /// Opcode for file creation + deletion.
 const OP_CREATE_UNLINK: u8 = 0x06;
 /// Opcode for `mkdir()` + `rmdir()`.
 const OP_MKDIR_RMDIR: u8 = 0x05;
-/// Opcode for `rename()`.
+/// Opcode for file creation + `rename()` + deletion.
 const OP_RENAME: u8 = 0x09;
 /// Opcode for sequential write.
 const OP_SEQ_WRITE: u8 = 0x04;
 
 /// Operation opcodes exchanged between the host driver and the guest benchmark program.
 ///
-/// The host sends a one-byte opcode on stdin; the guest executes the corresponding VFS operation
-/// and replies with a one-byte acknowledgement on stdout.
+/// The host sends a request on the guest console that starts with a one-byte opcode; the guest
+/// executes the corresponding VFS operation and replies with a one-byte acknowledgement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum VfsOp {
@@ -49,17 +51,15 @@ pub enum VfsOp {
     Stat = OP_STAT,
     /// `open()` + `close()` on an existing file.
     OpenClose = OP_OPEN_CLOSE,
-    /// `read_dir()` on a directory.
+    /// Read of every entry of a directory.
     Readdir = OP_READDIR,
-    /// `create_mount()` + `unmount()` cycle for a scratch FAT directory.
-    CreateScratch = OP_CREATE_SCRATCH,
     /// Sequential read of a file.
     SeqRead = OP_SEQ_READ,
     /// File creation + deletion cycle.
     CreateUnlink = OP_CREATE_UNLINK,
     /// `mkdir()` + `rmdir()` cycle.
     MkdirRmdir = OP_MKDIR_RMDIR,
-    /// `rename()` on a file.
+    /// File creation + `rename()` + deletion cycle.
     Rename = OP_RENAME,
     /// Sequential write to a scratch file.
     SeqWrite = OP_SEQ_WRITE,
@@ -73,7 +73,6 @@ impl VfsOp {
             OP_STAT => Some(Self::Stat),
             OP_OPEN_CLOSE => Some(Self::OpenClose),
             OP_READDIR => Some(Self::Readdir),
-            OP_CREATE_SCRATCH => Some(Self::CreateScratch),
             OP_SEQ_READ => Some(Self::SeqRead),
             OP_CREATE_UNLINK => Some(Self::CreateUnlink),
             OP_MKDIR_RMDIR => Some(Self::MkdirRmdir),
@@ -94,10 +93,20 @@ impl VfsOp {
 //==================================================================================================
 
 /// Acknowledgement byte: success.
+///
+/// The guest also sends it once, right after it boots, to tell the host that it is ready to serve
+/// requests.
 pub const ACK_OK: u8 = 0x00;
 
 /// Acknowledgement byte: error.
 pub const ACK_ERR: u8 = 0xFF;
+
+/// Acknowledgement byte: the operation was rejected because the file system is read-only.
+///
+/// The guest sends it, instead of [`ACK_ERR`], when the operation fails with a permission or a
+/// read-only file system error, which is how `vfsd` reports a write to a read-only mount. It lets
+/// the host tell this rejection apart from any other failure.
+pub const ACK_READ_ONLY: u8 = 0xFE;
 
 //==================================================================================================
 // Protocol Constants
@@ -110,20 +119,24 @@ pub const ACK_ERR: u8 = 0xFF;
 pub const MAX_PATH_LEN: usize = 255;
 
 //==================================================================================================
-// Mount Configuration
+// Scratch Area
 //==================================================================================================
 
-/// Mount configuration byte: mount the ramfs as writable.
+/// Directory, at the root of the benchmark image, in which the write operations create their files
+/// and directories.
 ///
-/// Uses a dedicated magic value so mount configuration bytes cannot be confused with operation
-/// opcodes or acknowledgment bytes during protocol mismatches.
-pub const MOUNT_WRITABLE: u8 = 0xA5;
+/// The image generator creates it empty. Every write operation removes what it creates, so the
+/// directory is empty again once an operation completes.
+pub const SCRATCH_DIR: &str = "/scratch";
 
-/// Mount configuration byte: mount the ramfs as read-only.
-///
-/// Enforces the read-only gate on write operations.
-/// Uses a distinct magic value to avoid overlapping other one-byte protocol fields.
-pub const MOUNT_READONLY: u8 = 0x5A;
+/// File that the file creation, rename and write operations create.
+pub const SCRATCH_FILE: &str = "/scratch/tmpfile.dat";
+
+/// Destination of the rename operation.
+pub const SCRATCH_RENAMED_FILE: &str = "/scratch/renamed.dat";
+
+/// Directory that the directory creation operation creates.
+pub const SCRATCH_SUBDIR: &str = "/scratch/benchdir";
 
 //==================================================================================================
 // Image Filename

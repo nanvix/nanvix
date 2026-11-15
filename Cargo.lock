@@ -1957,12 +1957,14 @@ dependencies = [
  "indicatif",
  "koptions",
  "log",
+ "multiimage",
  "nanvix",
  "nanvixd",
  "rand 0.10.3",
  "reqwest",
  "serde_json",
  "syscall-bench-common",
+ "tempfile",
  "tokio",
  "user-vm-api",
  "vfs-bench-common",
@@ -4291,7 +4293,6 @@ name = "vfs-bench-nostd"
 version = "0.24.143"
 dependencies = [
  "build-utils",
- "cfg-if",
  "fatfs",
  "libc_string",
  "mkramfs",
@@ -4302,8 +4303,6 @@ dependencies = [
  "sysalloc",
  "sysapi",
  "syscall",
- "syslog",
- "vfs",
  "vfs-bench-common",
 ]
 

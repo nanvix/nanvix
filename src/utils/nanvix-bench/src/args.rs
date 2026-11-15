@@ -39,7 +39,7 @@ impl Args {
     cold-start-uvm         Measure User VM start-up through its first gateway response.
   snapshot-restore       Measure snapshot restore latency vs boot-time.
   syscall-bench          Measure system call latencies inside the guest.
-  vfs-bench              Measure VFS operation latencies on a dense ramfs.
+  vfs-bench              Measure VFS operation latencies through vfsd on a dense ramfs.
     warm-start-gateway     Measure round-trip latency through the standalone gateway.
   warm-start-vmm         Measure raw round-trip latency inside the user VM.
   warm-start-socket      Measure round-trip latency over a guest TCP echo socket.";
