@@ -635,6 +635,128 @@ fn fat_descriptor_truncation_visible_to_new_descriptors() {
     forget_processes(&[pid]);
 }
 
+/// Tests that `stat()` follows the creation and the removal of paths, and the writes to files,
+/// although a mount answers repeated queries, including for paths that do not exist, from its cache.
+#[test]
+fn stat_follows_creation_and_removal() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7416);
+    set_current_process(pid);
+    let mount: &str = "/stat-creation";
+    crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+
+    let file: &str = "/stat-creation/file";
+    let dir: &str = "/stat-creation/dir";
+    for path in [file, dir] {
+        for _ in 0..2 {
+            assert_eq!(crate::file::stat(path), Err(Fat32Error::NotFound), "path should be missing");
+        }
+    }
+
+    // Create the file and keep it open, so that its data is written through its descriptor.
+    let create_flags: c_int = file_access_mode::O_RDWR | file_creation_flags::O_CREAT;
+    let fd: c_int = vfs_open(file, create_flags).expect("create file");
+    let created: filesystem::Stat = crate::file::stat(file).expect("stat created file");
+    assert_eq!(created.size(), 0, "created file should be empty");
+    assert!(!created.is_dir(), "created file should not be a directory");
+    write_all(fd, b"hello");
+    assert_eq!(
+        crate::file::stat(file).expect("stat written file").size(),
+        5,
+        "stat should see the write"
+    );
+    vfs_close(fd).expect("close file");
+
+    vfs_mkdir(dir).expect("create directory");
+    assert!(
+        crate::file::stat(dir).expect("stat created directory").is_dir(),
+        "created directory should be found"
+    );
+
+    vfs_unlink(file).expect("unlink file");
+    vfs_rmdir(dir).expect("remove directory");
+    for path in [file, dir] {
+        assert_eq!(crate::file::stat(path), Err(Fat32Error::NotFound), "path should be gone");
+    }
+
+    crate::state::unmount(mount).expect("unmount filesystem");
+    forget_processes(&[pid]);
+}
+
+/// Tests that `stat()` follows renames, including the move of the paths below a renamed directory,
+/// and the change of the times of a file, although a mount answers repeated queries from its cache.
+#[test]
+fn stat_follows_rename_and_times() {
+    // A timestamp within the FAT range (2024-06-15T12:30:00Z).
+    const TIME: i64 = 1_718_454_600;
+
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7417);
+    set_current_process(pid);
+    let mount: &str = "/stat-rename";
+    crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+
+    vfs_mkdir("/stat-rename/dir").expect("create directory");
+    let create_flags: c_int = file_access_mode::O_WRONLY | file_creation_flags::O_CREAT;
+    let fd: c_int = vfs_open("/stat-rename/dir/file", create_flags).expect("create file");
+    write_all(fd, b"hello");
+    vfs_close(fd).expect("close file");
+
+    // Query every path involved, so that the mount remembers its metadata, or that it is missing.
+    let old_file: filesystem::Stat = crate::file::stat("/stat-rename/dir/file").expect("stat file");
+    assert_eq!(old_file.size(), 5, "file should have been written");
+    for path in ["/stat-rename/moved", "/stat-rename/moved/file"] {
+        assert_eq!(crate::file::stat(path), Err(Fat32Error::NotFound), "path should be missing");
+    }
+    // A trailing separator must still be rejected on a file whose metadata is cached.
+    assert_eq!(crate::file::stat("/stat-rename/dir/file/"), Err(Fat32Error::NotADirectory));
+
+    vfs_rename("/stat-rename/dir", "/stat-rename/moved").expect("rename directory");
+    assert_eq!(crate::file::stat("/stat-rename/dir"), Err(Fat32Error::NotFound));
+    assert_eq!(crate::file::stat("/stat-rename/dir/file"), Err(Fat32Error::NotFound));
+    assert!(crate::file::stat("/stat-rename/moved").expect("stat directory").is_dir());
+    assert_eq!(
+        crate::file::stat("/stat-rename/moved/file").expect("stat moved file").size(),
+        5,
+        "file should have moved with its directory"
+    );
+
+    vfs_rename("/stat-rename/moved/file", "/stat-rename/file").expect("rename file");
+    assert_eq!(crate::file::stat("/stat-rename/moved/file"), Err(Fat32Error::NotFound));
+    let renamed: filesystem::Stat = crate::file::stat("/stat-rename/file").expect("stat file");
+    assert_eq!(renamed.size(), 5, "renamed file should keep its data");
+    assert_ne!(renamed.mtime(), TIME, "file should not already have the time to set");
+
+    let times: [timespec; 2] = [
+        timespec {
+            tv_sec: TIME,
+            tv_nsec: 0,
+        },
+        timespec {
+            tv_sec: TIME,
+            tv_nsec: 0,
+        },
+    ];
+    vfs_utimensat(::sysapi::fcntl::atflags::AT_FDCWD, "/stat-rename/file", &times, 0)
+        .expect("set timestamps");
+    assert_eq!(
+        crate::file::stat("/stat-rename/file").expect("stat file").mtime(),
+        TIME,
+        "stat should see the new modification time"
+    );
+
+    vfs_unlink("/stat-rename/file").expect("unlink file");
+    vfs_rmdir("/stat-rename/moved").expect("remove directory");
+    crate::state::unmount(mount).expect("unmount filesystem");
+    forget_processes(&[pid]);
+}
+
 /// Tests opened terminal devices independently of the standard descriptor slots.
 #[test]
 fn terminal_device_open_modes() {

@@ -7,6 +7,7 @@
 // Modules
 //==================================================================================================
 
+mod metadata_cache;
 mod mount_point;
 mod path_cache;
 mod vfs;

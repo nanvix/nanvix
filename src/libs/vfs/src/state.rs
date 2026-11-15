@@ -182,9 +182,9 @@ pub fn is_initialized() -> bool {
 /// - The memory remains valid for the lifetime of the mount.
 /// - The memory region is at least `size` bytes.
 /// - Nothing else modifies the memory region while it is mounted, because a mount only tracks the
-///   modifications that it makes itself (see [`Fat::epoch()`]). In particular, the region must not
-///   be mounted twice, unless both mounts are read-only, as a mount does not see what the other
-///   one does.
+///   modifications that it makes itself (see [`Fat::epoch()`]), which the VFS uses to validate the
+///   metadata that it caches. In particular, the region must not be mounted twice, unless both
+///   mounts are read-only, as a mount does not see what the other one does.
 pub unsafe fn mount_image(
     mount_path: &str,
     ptr: *mut u8,
