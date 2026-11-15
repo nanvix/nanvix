@@ -805,6 +805,163 @@ fn raw_region_contiguous_file() {
     // Note: if clusters are not contiguous, None is acceptable.
 }
 
+// -- modification epoch tests ------------------------------------------------
+
+/// A timestamp within the FAT range, used to set the times of files (2024-06-15T12:30:00Z).
+const EPOCH_TEST_TIME: i64 = 1_718_454_600;
+
+/// Helper: runs `modify`, and asserts that it advances the epoch of a filesystem.
+///
+/// Returns whatever `modify` returns, so that it can hand out file handles.
+fn assert_advances_epoch<T>(fat: &Fat, what: &str, modify: impl FnOnce() -> T) -> T {
+    let before: u64 = fat.epoch();
+    let result: T = modify();
+    assert_ne!(fat.epoch(), before, "{what} should advance the epoch");
+    result
+}
+
+/// Tests that creating a file advances the epoch.
+#[test]
+fn epoch_advances_on_create() {
+    let fat: FatHandle = FatHandle::new();
+    let _opened: FatFile<'_> = assert_advances_epoch(&fat, "open() that creates a file", || {
+        fat.open(&test_path("opened.txt"), false, true, true, false)
+            .expect("create should succeed")
+    });
+    let _created: FatFile<'_> = assert_advances_epoch(&fat, "create_new()", || {
+        fat.create_new(&test_path("created.txt"), false, true)
+            .expect("create should succeed")
+    });
+}
+
+/// Tests that truncating a file when opening it advances the epoch.
+#[test]
+fn epoch_advances_on_truncating_open() {
+    let fat: FatHandle = FatHandle::new();
+    for create in [false, true] {
+        {
+            let mut file: FatFile<'_> = fat
+                .open(&test_path("reset.txt"), false, true, true, false)
+                .expect("create should succeed");
+            write_all(&mut file, b"initial content");
+        }
+
+        let _truncated: FatFile<'_> = assert_advances_epoch(
+            &fat,
+            &alloc::format!("open() that truncates a file (create: {create})"),
+            || {
+                fat.open(&test_path("reset.txt"), false, true, create, true)
+                    .expect("open with truncate should succeed")
+            },
+        );
+    }
+}
+
+/// Tests that creating and removing a directory advances the epoch.
+#[test]
+fn epoch_advances_on_directory_changes() {
+    let fat: FatHandle = FatHandle::new();
+    assert_advances_epoch(&fat, "mkdir()", || {
+        fat.mkdir(&test_path("dir")).expect("mkdir should succeed");
+    });
+    assert_advances_epoch(&fat, "rmdir()", || {
+        fat.rmdir(&test_path("dir")).expect("rmdir should succeed");
+    });
+}
+
+/// Tests that renaming and removing a file advances the epoch.
+#[test]
+fn epoch_advances_on_rename_and_unlink() {
+    let fat: FatHandle = FatHandle::new();
+    fat.create_new(&test_path("old.txt"), false, true)
+        .expect("create should succeed");
+    assert_advances_epoch(&fat, "rename()", || {
+        fat.rename(&test_path("old.txt"), &test_path("new.txt"))
+            .expect("rename should succeed");
+    });
+    assert_advances_epoch(&fat, "unlink()", || {
+        fat.unlink(&test_path("new.txt"))
+            .expect("unlink should succeed");
+    });
+}
+
+/// Tests that setting the times of a file advances the epoch.
+#[test]
+fn epoch_advances_on_set_times() {
+    let fat: FatHandle = FatHandle::new();
+    fat.create_new(&test_path("times.txt"), false, true)
+        .expect("create should succeed");
+    assert_advances_epoch(&fat, "set_times()", || {
+        fat.set_times(&test_path("times.txt"), Some(EPOCH_TEST_TIME), Some(EPOCH_TEST_TIME))
+            .expect("set_times should succeed");
+    });
+}
+
+/// Tests that writing and truncating through a handle advance the epoch, even though they do not go
+/// through the filesystem.
+#[test]
+fn epoch_advances_on_handle_changes() {
+    let fat: FatHandle = FatHandle::new();
+    let mut file: FatFile<'_> = fat
+        .create_new(&test_path("handle.txt"), true, true)
+        .expect("create should succeed");
+
+    assert_advances_epoch(&fat, "write()", || {
+        file.write(b"hello world").expect("write should succeed");
+    });
+    file.seek(::fatfs::SeekFrom::Start(5))
+        .expect("seek should succeed");
+    assert_advances_epoch(&fat, "truncate()", || {
+        file.truncate().expect("truncate should succeed");
+    });
+}
+
+/// Tests that operations that only read the filesystem leave its epoch unchanged.
+#[test]
+fn epoch_unchanged_by_reads() {
+    let fat: FatHandle = FatHandle::new();
+    {
+        let mut file: FatFile<'_> = fat
+            .create_new(&test_path("data.txt"), true, true)
+            .expect("create should succeed");
+        write_all(&mut file, b"some data");
+    }
+    fat.mkdir(&test_path("dir")).expect("mkdir should succeed");
+
+    let before: u64 = fat.epoch();
+
+    fat.stat(&test_path("data.txt"))
+        .expect("stat should succeed");
+    assert_eq!(
+        fat.stat(&test_path("missing.txt")).unwrap_err(),
+        Fat32Error::NotFound,
+        "stat of a missing file should fail"
+    );
+    fat.read_dir(&test_path(""))
+        .expect("read_dir should succeed");
+    assert!(fat.file_raw_region(&test_path("data.txt")).is_some(), "file should be contiguous");
+    assert!(
+        fat.has_non_directory_ancestor(&test_path("data.txt/child")),
+        "a file is not a directory"
+    );
+    {
+        // Opening an existing file with `create` set, but without `truncate`, leaves it alone.
+        let mut file: FatFile<'_> = fat
+            .open(&test_path("data.txt"), true, false, true, false)
+            .expect("open for read should succeed");
+        assert_eq!(read_to_end(&mut file), b"some data", "file should keep its data");
+        file.len().expect("len should succeed");
+        file.flush().expect("flush should succeed");
+    }
+    // Setting nothing, or setting the times of a directory, which fatfs cannot do, changes nothing.
+    fat.set_times(&test_path("data.txt"), None, None)
+        .expect("set_times should succeed");
+    fat.set_times(&test_path("dir"), Some(EPOCH_TEST_TIME), Some(EPOCH_TEST_TIME))
+        .expect("set_times on a directory should succeed");
+
+    assert_eq!(fat.epoch(), before, "reads should not advance the epoch");
+}
+
 // -- Debug trait test --------------------------------------------------------
 
 /// Tests that Fat implements Debug.
