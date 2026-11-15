@@ -243,3 +243,171 @@ fn hit_refreshes_recency() {
     );
     assert_eq!(asked.get(), paths.len() + 2, "only the evicted path should be asked again");
 }
+
+/// A region of `len` bytes that starts at the address `addr`, which is never dereferenced.
+fn region(addr: usize, len: usize) -> Option<(*const u8, usize)> {
+    Some((::core::ptr::without_provenance(addr), len))
+}
+
+/// Queries the cache for the region of a path, counting how many times the filesystem has to
+/// answer.
+///
+/// `answer` is what the filesystem says if it is asked.
+fn query_region(
+    cache: &mut MetadataCache,
+    epoch: u64,
+    path: &str,
+    answer: Option<(*const u8, usize)>,
+    asked: &Cell<usize>,
+) -> Option<(*const u8, usize)> {
+    cache.raw_region(epoch, path, || {
+        asked.set(asked.get() + 1);
+        answer
+    })
+}
+
+/// Tests that a region that is not cached is answered by the filesystem.
+#[test]
+fn region_miss_asks_the_filesystem() {
+    let mut cache: MetadataCache = MetadataCache::new();
+    let asked: Cell<usize> = Cell::new(0);
+
+    assert_eq!(
+        query_region(&mut cache, 1, "a", region(0x1000, 10), &asked),
+        region(0x1000, 10),
+        "a miss should return the answer of the filesystem"
+    );
+    assert_eq!(asked.get(), 1, "a miss should ask the filesystem once");
+}
+
+/// Tests that a region that is cached is answered without asking the filesystem.
+#[test]
+fn region_hit_does_not_ask_the_filesystem() {
+    let mut cache: MetadataCache = MetadataCache::new();
+    let asked: Cell<usize> = Cell::new(0);
+    query_region(&mut cache, 1, "a", region(0x1000, 10), &asked);
+
+    // The filesystem would now say something else, so only the cache can explain the answer.
+    assert_eq!(
+        query_region(&mut cache, 1, "a", region(0x2000, 99), &asked),
+        region(0x1000, 10),
+        "a hit should return the cached region"
+    );
+    assert_eq!(asked.get(), 1, "a hit should not ask the filesystem");
+}
+
+/// Tests that the lack of a region is cached too.
+#[test]
+fn absent_region_is_cached() {
+    let mut cache: MetadataCache = MetadataCache::new();
+    let asked: Cell<usize> = Cell::new(0);
+
+    assert_eq!(query_region(&mut cache, 1, "a", None, &asked), None);
+    assert_eq!(
+        query_region(&mut cache, 1, "a", region(0x1000, 10), &asked),
+        None,
+        "a hit should report that there is no region"
+    );
+    assert_eq!(asked.get(), 1, "a path without a region should be asked only once");
+}
+
+/// Tests that a new epoch drops the regions, and the lack of them.
+#[test]
+fn new_epoch_drops_regions() {
+    let mut cache: MetadataCache = MetadataCache::new();
+    let asked: Cell<usize> = Cell::new(0);
+    query_region(&mut cache, 1, "found", region(0x1000, 10), &asked);
+    query_region(&mut cache, 1, "absent", None, &asked);
+
+    assert_eq!(
+        query_region(&mut cache, 2, "found", region(0x2000, 20), &asked),
+        region(0x2000, 20),
+        "a region of an earlier epoch should not be returned"
+    );
+    assert_eq!(
+        query_region(&mut cache, 2, "absent", region(0x3000, 30), &asked),
+        region(0x3000, 30),
+        "a path that gained data should not be reported as having none"
+    );
+    assert_eq!(asked.get(), 4, "the new epoch should ask the filesystem again");
+}
+
+/// Tests that metadata and regions share one epoch, so that a query of either kind that sees a
+/// new epoch drops the entries of both kinds.
+#[test]
+fn new_epoch_drops_regions_and_metadata_together() {
+    let mut cache: MetadataCache = MetadataCache::new();
+    let asked: Cell<usize> = Cell::new(0);
+    query_region(&mut cache, 1, "a", region(0x1000, 10), &asked);
+    query(&mut cache, 1, "a", Ok(file(10)), &asked).expect("query should succeed");
+    assert_eq!(asked.get(), 2, "each kind of query should be asked once");
+
+    // Only a metadata query sees the new epoch, but the region of the earlier epoch must go.
+    query(&mut cache, 2, "b", Ok(file(20)), &asked).expect("query should succeed");
+    assert_eq!(
+        query_region(&mut cache, 2, "a", region(0x2000, 20), &asked),
+        region(0x2000, 20),
+        "a region of an earlier epoch should not be returned"
+    );
+
+    // Only a region query sees the new epoch, but the metadata of the earlier epoch must go.
+    query_region(&mut cache, 3, "c", region(0x3000, 30), &asked);
+    assert_eq!(
+        query(&mut cache, 3, "b", Ok(file(30)), &asked),
+        Ok(file(30)),
+        "metadata of an earlier epoch should not be returned"
+    );
+    assert_eq!(asked.get(), 6, "every entry of an earlier epoch should have been asked again");
+}
+
+/// Tests that the metadata and the region of a path are cached independently.
+#[test]
+fn regions_and_metadata_are_independent() {
+    let mut cache: MetadataCache = MetadataCache::new();
+    let asked: Cell<usize> = Cell::new(0);
+
+    // A path can have metadata and no data to read in place, such as an empty file.
+    query(&mut cache, 1, "a", Ok(file(0)), &asked).expect("query should succeed");
+    assert_eq!(query_region(&mut cache, 1, "a", None, &asked), None);
+    assert_eq!(asked.get(), 2, "the region should not be answered by the metadata");
+
+    assert_eq!(query(&mut cache, 1, "a", Err(Fat32Error::IoError), &asked), Ok(file(0)));
+    assert_eq!(
+        query_region(&mut cache, 1, "a", region(0x1000, 10), &asked),
+        None,
+        "the metadata should not change the region"
+    );
+    assert_eq!(asked.get(), 2, "both answers should have been cached");
+}
+
+/// Tests that the cache holds a bounded number of regions and evicts the least recently used one.
+#[test]
+fn region_cache_is_bounded() {
+    let mut cache: MetadataCache = MetadataCache::new();
+    let asked: Cell<usize> = Cell::new(0);
+    let paths: ::alloc::vec::Vec<String> =
+        (0..=REGION_CACHE_CAPACITY).map(|i| ::alloc::format!("path{i}")).collect();
+
+    for (i, path) in paths.iter().enumerate() {
+        query_region(&mut cache, 1, path, region(0x1000 * (i + 1), 1), &asked);
+    }
+    assert_eq!(asked.get(), paths.len(), "each path should be asked once");
+
+    // The last paths fit, so they are all cached.
+    for (i, path) in paths.iter().enumerate().skip(1) {
+        assert_eq!(
+            query_region(&mut cache, 1, path, None, &asked),
+            region(0x1000 * (i + 1), 1),
+            "{path:?} should be cached"
+        );
+    }
+    assert_eq!(asked.get(), paths.len(), "cached paths should not be asked again");
+
+    // The first path did not fit, so it was evicted.
+    assert_eq!(
+        query_region(&mut cache, 1, &paths[0], region(0x1000, 2), &asked),
+        region(0x1000, 2),
+        "the least recently used path should have been evicted"
+    );
+    assert_eq!(asked.get(), paths.len() + 1, "the evicted path should be asked again");
+}

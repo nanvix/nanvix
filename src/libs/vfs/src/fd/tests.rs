@@ -757,6 +757,122 @@ fn stat_follows_rename_and_times() {
     forget_processes(&[pid]);
 }
 
+/// Tests that files that are read in place follow renames, removals and the creation of another
+/// file at the path of a removed one, although a mount answers repeated queries from its cache.
+#[test]
+fn direct_reads_follow_renames_and_removal() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7418);
+    set_current_process(pid);
+    let mount: &str = "/direct-follow";
+    crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+
+    let first: &str = "/direct-follow/first";
+    let moved: &str = "/direct-follow/moved";
+    let create_flags: c_int = file_access_mode::O_WRONLY | file_creation_flags::O_CREAT;
+    let fd: c_int = vfs_open(first, create_flags).expect("create file");
+    write_all(fd, b"first contents");
+    vfs_close(fd).expect("close file");
+
+    // Query every path involved, so that the mount remembers where the data is, or that there is
+    // none, and read the file in place.
+    let region: (*const u8, usize) =
+        crate::file::file_raw_region(first).expect("file should be read in place");
+    assert_eq!(region.1, 14, "region should span the file");
+    assert_eq!(crate::file::file_raw_region(first), Some(region), "queries should agree");
+    assert_eq!(crate::file::file_raw_region(moved), None, "missing path should have no data");
+    let fd: c_int = vfs_open(first, file_access_mode::O_RDONLY).expect("open file for reading");
+    assert_eq!(read_to_end(fd), b"first contents");
+    vfs_close(fd).expect("close file");
+
+    vfs_rename(first, moved).expect("rename file");
+    assert_eq!(crate::file::file_raw_region(first), None, "old name should have no data");
+    assert_eq!(vfs_open(first, file_access_mode::O_RDONLY), Err(Fat32Error::NotFound));
+    assert_eq!(
+        crate::file::file_raw_region(moved),
+        Some(region),
+        "new name should have the data of the file, which did not move"
+    );
+    let fd: c_int = vfs_open(moved, file_access_mode::O_RDONLY).expect("open renamed file");
+    assert_eq!(read_to_end(fd), b"first contents");
+    vfs_close(fd).expect("close file");
+
+    vfs_unlink(moved).expect("unlink file");
+    assert_eq!(crate::file::file_raw_region(moved), None, "removed file should have no data");
+    assert_eq!(vfs_open(moved, file_access_mode::O_RDONLY), Err(Fat32Error::NotFound));
+
+    // A new file takes the clusters that the removed one freed, so its region can start where the
+    // region of the removed file did, and then only its size tells the two apart.
+    let fd: c_int = vfs_open(moved, create_flags).expect("create file");
+    write_all(fd, b"second");
+    vfs_close(fd).expect("close file");
+    assert_eq!(
+        crate::file::file_raw_region(moved).map(|(_, len)| len),
+        Some(6),
+        "new file should have its own data"
+    );
+    let fd: c_int = vfs_open(moved, file_access_mode::O_RDONLY).expect("open new file");
+    assert_eq!(read_to_end(fd), b"second");
+    vfs_close(fd).expect("close file");
+
+    vfs_unlink(moved).expect("unlink file");
+    crate::state::unmount(mount).expect("unmount filesystem");
+    forget_processes(&[pid]);
+}
+
+/// Tests that opening a path below a file fails until the file is replaced by a directory, and
+/// fails again once the directory is replaced by a file, although a mount answers repeated lookups
+/// of the ancestors of a path from its cache.
+#[test]
+fn open_follows_ancestor_changes() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7419);
+    set_current_process(pid);
+    let mount: &str = "/ancestor-follow";
+    crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+
+    let node: &str = "/ancestor-follow/node";
+    let child: &str = "/ancestor-follow/node/child";
+    let create_flags: c_int = file_access_mode::O_RDWR | file_creation_flags::O_CREAT;
+
+    let fd: c_int = vfs_open(node, create_flags).expect("create file");
+    vfs_close(fd).expect("close file");
+    for _ in 0..2 {
+        assert_eq!(
+            vfs_open(child, create_flags),
+            Err(Fat32Error::NotADirectory),
+            "a file should not hold paths"
+        );
+    }
+
+    // The file turns into a directory.
+    vfs_unlink(node).expect("unlink file");
+    vfs_mkdir(node).expect("create directory");
+    let fd: c_int = vfs_open(child, create_flags).expect("create file in directory");
+    vfs_close(fd).expect("close file");
+
+    // The directory turns into a file again.
+    vfs_unlink(child).expect("unlink file in directory");
+    vfs_rmdir(node).expect("remove directory");
+    let fd: c_int = vfs_open(node, create_flags).expect("create file");
+    vfs_close(fd).expect("close file");
+    assert_eq!(
+        vfs_open(child, create_flags),
+        Err(Fat32Error::NotADirectory),
+        "a file should not hold paths"
+    );
+
+    vfs_unlink(node).expect("unlink file");
+    crate::state::unmount(mount).expect("unmount filesystem");
+    forget_processes(&[pid]);
+}
+
 /// Tests opened terminal devices independently of the standard descriptor slots.
 #[test]
 fn terminal_device_open_modes() {

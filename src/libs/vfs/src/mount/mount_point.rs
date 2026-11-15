@@ -24,11 +24,12 @@ use ::fat32::{
 ///
 /// # Metadata Cache
 ///
-/// A mount caches the answers to the metadata queries that it serves, see [`Mount::stat()`]. The
-/// cache is validated against the modification epoch of the mounted filesystem, so it stays correct
-/// whether the filesystem is modified through the [`Fat`] that [`Mount::fat()`] returns, or through
-/// the files that are opened from it. The cache lives and dies with the filesystem, because a
-/// mount never gives its [`Fat`] out by value or by mutable reference.
+/// A mount caches the answers to the lookups that it serves, see [`Mount::stat()`],
+/// [`Mount::file_raw_region()`] and [`Mount::has_non_directory_ancestor()`]. The cache is validated
+/// against the modification epoch of the mounted filesystem, so it stays correct whether the
+/// filesystem is modified through the [`Fat`] that [`Mount::fat()`] returns, or through the files
+/// that are opened from it. The cache lives and dies with the filesystem, because a mount never
+/// gives its [`Fat`] out by value or by mutable reference.
 pub struct Mount {
     /// Absolute path where this mount is rooted.
     path: String,
@@ -36,7 +37,7 @@ pub struct Mount {
     fat: Fat,
     /// Whether the mount rejects mutating operations.
     readonly: bool,
-    /// Cache of the metadata queries answered by `fat`.
+    /// Cache of the lookups answered by `fat`.
     cache: MetadataCache,
 }
 
@@ -103,6 +104,59 @@ impl Mount {
             fat.stat(path)
                 .map(|info| Stat::new(info.size, info.is_dir, info.atime, info.mtime, info.ctime))
         })
+    }
+
+    /// Gets the location of the data of a file that can be read in place, answering from the
+    /// metadata cache when it can.
+    ///
+    /// The answer is always the one that [`Fat::file_raw_region()`] would give now, because the
+    /// cache is validated against the modification epoch of the filesystem. The cache only vouches
+    /// for it at the time of the lookup and does not track the pointer after that, so whoever keeps
+    /// it, such as a descriptor that reads the file in place, is not told when the file is modified
+    /// or when this mount is removed, which is no different from when the lookup is not cached.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Checked path relative to this mount.
+    ///
+    /// # Returns
+    ///
+    /// A pointer to the data of the file, inside the FAT image of this mount, and its size, if the
+    /// file is not empty and is stored contiguously. `None` otherwise.
+    pub(crate) fn file_raw_region(&mut self, path: &FatResolvedPath) -> Option<(*const u8, usize)> {
+        let fat: &Fat = &self.fat;
+        self.cache
+            .raw_region(fat.epoch(), path.as_str(), || fat.file_raw_region(path))
+    }
+
+    /// Tells whether a proper ancestor of a path exists and is not a directory.
+    ///
+    /// This is [`Fat::has_non_directory_ancestor()`], except that the ancestors are looked up with
+    /// [`Mount::stat()`], so a path whose ancestors were looked up before is answered from the
+    /// metadata cache.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Checked path relative to this mount.
+    ///
+    /// # Returns
+    ///
+    /// `true` if an ancestor of the path exists and is not a directory, `false` otherwise.
+    pub(crate) fn has_non_directory_ancestor(&mut self, path: &FatResolvedPath) -> bool {
+        let path: &str = path.as_str();
+        let mut end: usize = path.len();
+        while let Some(slash) = path[..end].rfind('/') {
+            let ancestor: FatResolvedPath = match FatResolvedPath::new(String::from(&path[..slash]))
+            {
+                Ok(ancestor) => ancestor,
+                Err(_) => return false,
+            };
+            if self.stat(&ancestor).is_ok_and(|stat| !stat.is_dir()) {
+                return true;
+            }
+            end = slash;
+        }
+        false
     }
 
     /// Returns the path relative to this mount when `path` belongs to it.
