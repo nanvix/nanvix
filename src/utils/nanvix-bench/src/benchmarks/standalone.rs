@@ -309,7 +309,9 @@ impl Benchmark {
 
 /// Parses a `PERF_TIMINGS:{...}` JSON line from stderr output and returns the deserialized map.
 #[cfg(feature = "profile-time")]
-fn parse_perf_timings(stderr_bytes: &[u8]) -> Option<serde_json::Map<String, serde_json::Value>> {
+pub(super) fn parse_perf_timings(
+    stderr_bytes: &[u8],
+) -> Option<serde_json::Map<String, serde_json::Value>> {
     let stderr_str: &str = std::str::from_utf8(stderr_bytes).ok()?;
     for line in stderr_str.lines() {
         if let Some(json_str) = line.strip_prefix(PERF_TIMINGS_PREFIX)

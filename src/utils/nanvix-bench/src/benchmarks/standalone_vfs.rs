@@ -12,8 +12,6 @@ use ::indicatif::{
     ProgressStyle,
 };
 use ::log::error;
-#[cfg(feature = "profile-time")]
-use ::nanvix::uservm::perf::PERF_TIMINGS_PREFIX;
 use ::rand::{
     RngExt,
     SeedableRng,
@@ -24,23 +22,39 @@ use ::std::{
         Path,
         PathBuf,
     },
+    process::{
+        ExitStatus,
+        Stdio,
+    },
+    sync::{
+        Arc,
+        Mutex,
+        PoisonError,
+    },
     time::Instant,
-};
-#[cfg(feature = "profile-time")]
-use ::tokio::io::{
-    AsyncBufReadExt,
-    BufReader,
 };
 use ::tokio::{
     io::{
+        AsyncRead,
         AsyncReadExt,
         AsyncWriteExt,
     },
-    process::Command,
-    time::Duration,
+    process::{
+        Child,
+        ChildStderr,
+        ChildStdin,
+        ChildStdout,
+        Command,
+    },
+    task::JoinHandle,
+    time::{
+        Duration,
+        timeout,
+    },
 };
 use ::vfs_bench_common::{
     ACK_OK,
+    MAX_PATH_LEN,
     MOUNT_READONLY,
     MOUNT_WRITABLE,
     VfsOp,
@@ -50,12 +64,18 @@ use ::vfs_bench_common::{
 // Constants
 //==================================================================================================
 
-/// Timeout (in seconds) for the VFS benchmark guest application.
-const VFS_BENCH_TIMEOUT_SECS: u64 = 300;
+/// Maximum time to wait for the guest to complete the mount handshake, and for the acknowledgement
+/// of each request.
+const VFS_BENCH_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// Timeout for reading perf timing data from stderr during teardown.
-#[cfg(feature = "profile-time")]
-const STDERR_READ_TIMEOUT: Duration = Duration::from_secs(5);
+/// Maximum time to wait for `nanvixd` to exit once the guest console is closed.
+const TEARDOWN_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Maximum time to wait for the standard error stream of `nanvixd` to end once it exits.
+const STDERR_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Size of the chunks in which the standard error stream of `nanvixd` is read.
+const STDERR_CHUNK_SIZE: usize = 4096;
 
 /// Fixed seed for the host-side RNG that picks random files/dirs per iteration.
 const HOST_RNG_SEED: u64 = 0xCAFE_BABE;
@@ -84,6 +104,14 @@ const DECOMPOSED_OPS: &[(&str, VfsOp, Option<VfsOp>)] = &[
     ("write+flush", VfsOp::SeqWrite, Some(VfsOp::CreateUnlink)),
 ];
 
+/// Per-phase timings that `nanvixd` reports on its standard error stream.
+type PhaseTimings = serde_json::Map<String, serde_json::Value>;
+
+/// Returns the time, in microseconds, that `nanvixd` took to load the ramfs, if it reported it.
+fn ramfs_load_us(timings: Option<PhaseTimings>) -> Option<u128> {
+    timings?.get("ramfs_load_us")?.as_u64().map(u128::from)
+}
+
 /// Returns `true` if the given operation mutates the filesystem.
 fn is_write_op(op: VfsOp) -> bool {
     matches!(
@@ -94,6 +122,20 @@ fn is_write_op(op: VfsOp) -> bool {
             | VfsOp::Rename
             | VfsOp::SeqWrite
     )
+}
+
+/// Returns the decomposition rules that apply to a mount mode.
+///
+/// A read-only mount rejects the operations that modify the file system, so it leaves out every
+/// rule that involves one of them.
+fn decomposed_ops(readonly: bool) -> Vec<(&'static str, VfsOp, Option<VfsOp>)> {
+    DECOMPOSED_OPS
+        .iter()
+        .copied()
+        .filter(|&(_, minuend, subtrahend)| {
+            !readonly || (!is_write_op(minuend) && subtrahend.is_none_or(|op| !is_write_op(op)))
+        })
+        .collect()
 }
 
 //==================================================================================================
@@ -189,6 +231,274 @@ fn scan_fat_image(image_path: &Path) -> Result<FatManifest> {
 }
 
 //==================================================================================================
+// Virtual Machine
+//==================================================================================================
+
+/// Collector of the standard error stream of `nanvixd`.
+///
+/// A background task drains the stream into a buffer that the collector shares with it, so that
+/// what the task read survives its cancellation.
+struct StderrCollector {
+    /// What the task read so far.
+    output: Arc<Mutex<Vec<u8>>>,
+    /// Task that reads the stream until it ends.
+    task: JoinHandle<()>,
+}
+
+impl StderrCollector {
+    /// Starts to collect `stream` in the background, so that `nanvixd` never blocks on a full pipe
+    /// while the benchmark runs.
+    fn spawn<R>(mut stream: R) -> Self
+    where
+        R: AsyncRead + Unpin + Send + 'static,
+    {
+        let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let shared: Arc<Mutex<Vec<u8>>> = Arc::clone(&output);
+        let task: JoinHandle<()> = ::tokio::spawn(async move {
+            let mut chunk: [u8; STDERR_CHUNK_SIZE] = [0; STDERR_CHUNK_SIZE];
+            loop {
+                match stream.read(&mut chunk).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(size) => shared
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .extend_from_slice(&chunk[..size]),
+                }
+            }
+        });
+
+        Self { output, task }
+    }
+
+    /// Waits for the stream to end and returns what was read from it.
+    ///
+    /// If the stream does not end within `limit`, the task is cancelled, because dropping its
+    /// handle would only detach it, which would leave it holding the pipe for as long as the stream
+    /// stays open. What the task read until then is returned all the same.
+    async fn collect(mut self, limit: Duration) -> String {
+        if timeout(limit, &mut self.task).await.is_err() {
+            self.task.abort();
+            let _ = (&mut self.task).await;
+        }
+
+        let bytes: Vec<u8> = self
+            .output
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+}
+
+/// A `nanvixd` process that boots the `vfs-bench-nostd` guest.
+///
+/// The process is killed when the value is dropped, so that no VM outlives an early return.
+struct VfsBenchVm {
+    /// The `nanvixd` process.
+    child: Child,
+    /// Console input of the guest.
+    stdin: ChildStdin,
+    /// Console output of the guest.
+    stdout: ChildStdout,
+    /// Collector of what `nanvixd` writes to its standard error stream.
+    stderr: StderrCollector,
+}
+
+impl VfsBenchVm {
+    /// Boots the guest `program` on a fresh `nanvixd` process that serves `ramfs`, and has the
+    /// guest mount the image as `mount_config` says.
+    async fn boot(
+        nanvixd_bin: &Path,
+        ramfs: &Path,
+        program: &str,
+        workspace_root: &Path,
+        mount_config: u8,
+    ) -> Result<Self> {
+        let mut child: Child = Command::new(nanvixd_bin)
+            .arg(::nanvixd::args::Args::OPT_RAMFS_FILENAME)
+            .arg(ramfs)
+            .arg(::nanvixd::args::Args::OPT_SEPARATOR)
+            .arg(program)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .current_dir(workspace_root)
+            .kill_on_drop(true)
+            .spawn()?;
+
+        let stdin: ChildStdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("failed to take nanvixd stdin"))?;
+        let stdout: ChildStdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("failed to take nanvixd stdout"))?;
+        let stderr: ChildStderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("failed to take nanvixd stderr"))?;
+
+        let mut vm: Self = Self {
+            child,
+            stdin,
+            stdout,
+            stderr: StderrCollector::spawn(stderr),
+        };
+        if let Err(error) = vm.configure_mount(mount_config).await {
+            vm.abort().await;
+            return Err(error);
+        }
+
+        Ok(vm)
+    }
+
+    /// Sends the mount configuration byte and waits for the guest's mount-complete acknowledgement.
+    ///
+    /// The guest reads one byte to decide whether to mount the ramfs as read-only or writable,
+    /// then sends `ACK_OK` once the mount succeeds. It must be done before any request.
+    async fn configure_mount(&mut self, config: u8) -> Result<()> {
+        let mut ack: [u8; 1] = [0; 1];
+        timeout(VFS_BENCH_TIMEOUT, async {
+            self.stdin.write_all(&[config]).await?;
+            self.stdin.flush().await?;
+            self.stdout.read_exact(&mut ack).await
+        })
+        .await
+        .map_err(|_| {
+            anyhow::anyhow!("guest mount timed out after {}s", VFS_BENCH_TIMEOUT.as_secs())
+        })?
+        .map_err(|error| anyhow::anyhow!("failed to configure the guest mount: {error}"))?;
+
+        if ack[0] != ACK_OK {
+            anyhow::bail!("guest reported mount error (config={config:#04x})");
+        }
+
+        Ok(())
+    }
+
+    /// Sends one request to the guest and returns its acknowledgement and its round-trip time.
+    ///
+    /// Wire format: `[opcode: u8][path_len: u8][path: path_len bytes]` → `[ack: u8]`.
+    async fn exchange(&mut self, op: VfsOp, path: &str) -> Result<(u8, Duration)> {
+        let path_bytes: &[u8] = path.as_bytes();
+        let path_len: u8 = u8::try_from(path_bytes.len()).map_err(|_| {
+            anyhow::anyhow!("path {path:?} exceeds the protocol limit of {MAX_PATH_LEN} bytes")
+        })?;
+
+        let mut ack: [u8; 1] = [0; 1];
+        let start: Instant = Instant::now();
+        timeout(VFS_BENCH_TIMEOUT, async {
+            self.stdin.write_all(&[op.as_u8(), path_len]).await?;
+            self.stdin.write_all(path_bytes).await?;
+            self.stdin.flush().await?;
+            self.stdout.read_exact(&mut ack).await
+        })
+        .await
+        .map_err(|_| {
+            anyhow::anyhow!("timed out after {}s waiting for {op:?}", VFS_BENCH_TIMEOUT.as_secs())
+        })?
+        .map_err(|error| anyhow::anyhow!("failed to complete {op:?} (path={path:?}): {error}"))?;
+
+        Ok((ack[0], start.elapsed()))
+    }
+
+    /// Runs one operation on the guest and returns its latency in microseconds.
+    async fn run_op(&mut self, op: VfsOp, path: &str) -> Result<u128> {
+        let (ack, elapsed): (u8, Duration) = self.exchange(op, path).await?;
+        if ack != ACK_OK {
+            anyhow::bail!("guest failed to run {op:?} (path={path:?})");
+        }
+
+        Ok(elapsed.as_micros())
+    }
+
+    /// Tears the VM down and combines the outcome with the one of the measurement that ran on it.
+    ///
+    /// The VM is torn down whatever the outcome of the measurement. On success, returns the value
+    /// of the measurement and the timings that `nanvixd` reported, if any.
+    async fn finish<T>(self, result: Result<T>) -> Result<(T, Option<PhaseTimings>)> {
+        let teardown: Result<Option<PhaseTimings>> = self.shutdown(result.is_err()).await;
+
+        match (result, teardown) {
+            (Ok(value), Ok(timings)) => Ok((value, timings)),
+            (Err(error), Ok(_)) | (Ok(_), Err(error)) => Err(error),
+            (Err(error), Err(teardown_error)) => {
+                anyhow::bail!("{error}; additionally failed to tear down nanvixd: {teardown_error}")
+            },
+        }
+    }
+
+    /// Closes the guest console, which makes the guest exit, and waits for `nanvixd` to exit.
+    ///
+    /// Logs what `nanvixd` wrote to its standard error stream if the teardown fails, or if
+    /// `measurement_failed` is set: the guest keeps serving requests after one fails, so a failed
+    /// measurement can still end in a clean exit, and that output is then the only trace of why.
+    ///
+    /// Returns the timings that `nanvixd` reported on its standard error stream, when the
+    /// `profile-time` feature is enabled.
+    async fn shutdown(self, measurement_failed: bool) -> Result<Option<PhaseTimings>> {
+        let Self {
+            mut child,
+            stdin,
+            mut stdout,
+            stderr,
+        } = self;
+
+        drop(stdin);
+
+        let exit: Result<ExitStatus> = match timeout(TEARDOWN_TIMEOUT, async {
+            // Drain the console so that nanvixd never blocks on a full pipe while exiting.
+            ::tokio::io::copy(&mut stdout, &mut ::tokio::io::sink()).await?;
+            child.wait().await
+        })
+        .await
+        {
+            Ok(Ok(status)) => Ok(status),
+            Ok(Err(error)) => Err(anyhow::anyhow!("failed to wait for nanvixd to exit: {error}")),
+            Err(_) => Err(anyhow::anyhow!(
+                "timed out after {}s waiting for nanvixd to exit",
+                TEARDOWN_TIMEOUT.as_secs()
+            )),
+        };
+        if exit.is_err() {
+            let _ = child.kill().await;
+        }
+        let output: String = stderr.collect(STDERR_TIMEOUT).await;
+
+        let outcome: Result<()> = exit.and_then(|status| {
+            if status.success() {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("nanvixd exited with {status}"))
+            }
+        });
+        if (measurement_failed || outcome.is_err()) && !output.is_empty() {
+            error!("nanvixd stderr:\n{output}");
+        }
+        outcome?;
+
+        #[cfg(feature = "profile-time")]
+        let timings: Option<PhaseTimings> =
+            super::standalone::parse_perf_timings(output.as_bytes());
+        #[cfg(not(feature = "profile-time"))]
+        let timings: Option<PhaseTimings> = None;
+
+        Ok(timings)
+    }
+
+    /// Kills the VM and logs what it wrote to its standard error stream.
+    async fn abort(mut self) {
+        let _ = self.child.kill().await;
+        let output: String = self.stderr.collect(STDERR_TIMEOUT).await;
+        if !output.is_empty() {
+            error!("nanvixd stderr:\n{output}");
+        }
+    }
+}
+
+//==================================================================================================
 // Implementations
 //==================================================================================================
 
@@ -259,7 +569,7 @@ impl Benchmark {
                 "VFS (writable):",
                 &manifest,
                 &nanvixd_bin,
-                &ramfs,
+                &ramfs_path,
                 &program,
             )
             .await?;
@@ -272,7 +582,7 @@ impl Benchmark {
                 "VFS (readonly):",
                 &manifest,
                 &nanvixd_bin,
-                &ramfs,
+                &ramfs_path,
                 &program,
             )
             .await?;
@@ -292,7 +602,7 @@ impl Benchmark {
         progress_label: &str,
         manifest: &FatManifest,
         nanvixd_bin: &Path,
-        ramfs: &str,
+        image: &Path,
         program: &str,
     ) -> Result<Vec<(&'static str, Vec<u128>)>> {
         let mount_config: u8 = if readonly {
@@ -305,13 +615,7 @@ impl Benchmark {
         let mut rng: StdRng = StdRng::seed_from_u64(HOST_RNG_SEED);
 
         // Filter out write operations when running in read-only mode.
-        let ops: Vec<(&str, VfsOp, Option<VfsOp>)> = DECOMPOSED_OPS
-            .iter()
-            .copied()
-            .filter(|&(_, min, sub)| {
-                !readonly || (!is_write_op(min) && sub.is_none_or(|s| !is_write_op(s)))
-            })
-            .collect();
+        let ops: Vec<(&'static str, VfsOp, Option<VfsOp>)> = decomposed_ops(readonly);
 
         // Progress bar: NOOP (1) + paired entries (those with a subtrahend).
         let paired_count: usize = ops.iter().filter(|(_, _, sub)| sub.is_some()).count();
@@ -325,34 +629,30 @@ impl Benchmark {
         );
         pb.set_message(progress_label.to_string());
 
-        // Measure the NOOP (protocol overhead) first.
-        let noop_latencies: Vec<u128>;
-        #[cfg(feature = "profile-time")]
-        let mut ramfs_load_samples: Vec<u64> = Vec::new();
-        {
-            let (mut child, mut stdin, mut stdout) =
-                Self::spawn_nanvixd(nanvixd_bin, ramfs, program, &self.workspace_root)?;
-            Self::send_mount_config(&mut stdin, &mut stdout, mount_config).await?;
+        // Time that nanvixd took to load the ramfs in each VM. Only reported when profiling.
+        let mut ramfs_load_samples: Vec<u128> = Vec::new();
 
-            noop_latencies = Self::measure_iterations(
-                &mut stdin,
-                &mut stdout,
+        // Measure the NOOP (protocol overhead) first.
+        let noop_latencies: Vec<u128> = {
+            let mut vm: VfsBenchVm =
+                VfsBenchVm::boot(nanvixd_bin, image, program, &self.workspace_root, mount_config)
+                    .await?;
+
+            let measured: Result<Vec<u128>> = Self::measure_iterations(
+                &mut vm,
                 VfsOp::Noop,
                 manifest,
                 &mut rng,
                 self.iterations,
                 &pb,
             )
-            .await?;
+            .await;
 
-            let _teardown_timings = Self::teardown_nanvixd(&mut child, stdin).await?;
-            #[cfg(feature = "profile-time")]
-            if let Some(timings) = _teardown_timings
-                && let Some(v) = timings.get("ramfs_load_us").and_then(|v| v.as_u64())
-            {
-                ramfs_load_samples.push(v);
-            }
-        }
+            let (latencies, timings): (Vec<u128>, Option<PhaseTimings>) =
+                vm.finish(measured).await?;
+            ramfs_load_samples.extend(ramfs_load_us(timings));
+            latencies
+        };
 
         // Paired decomposition (one VM per pair, back-to-back measurement).
         let mut paired_deltas: Vec<(&str, Vec<u128>)> = Vec::with_capacity(ops.len());
@@ -367,13 +667,12 @@ impl Benchmark {
                 },
             };
 
-            let (mut child, mut stdin, mut stdout) =
-                Self::spawn_nanvixd(nanvixd_bin, ramfs, program, &self.workspace_root)?;
-            Self::send_mount_config(&mut stdin, &mut stdout, mount_config).await?;
+            let mut vm: VfsBenchVm =
+                VfsBenchVm::boot(nanvixd_bin, image, program, &self.workspace_root, mount_config)
+                    .await?;
 
-            let deltas: Vec<u128> = Self::measure_paired_iterations(
-                &mut stdin,
-                &mut stdout,
+            let measured: Result<Vec<u128>> = Self::measure_paired_iterations(
+                &mut vm,
                 minuend,
                 sub_op,
                 manifest,
@@ -381,25 +680,18 @@ impl Benchmark {
                 self.iterations,
                 &pb,
             )
-            .await?;
-            paired_deltas.push((label, deltas));
+            .await;
 
-            let _teardown_timings = Self::teardown_nanvixd(&mut child, stdin).await?;
-            #[cfg(feature = "profile-time")]
-            if let Some(timings) = _teardown_timings
-                && let Some(v) = timings.get("ramfs_load_us").and_then(|v| v.as_u64())
-            {
-                ramfs_load_samples.push(v);
-            }
+            let (deltas, timings): (Vec<u128>, Option<PhaseTimings>) = vm.finish(measured).await?;
+            paired_deltas.push((label, deltas));
+            ramfs_load_samples.extend(ramfs_load_us(timings));
         }
 
         pb.finish();
 
         // Print VM setup timing breakdown (RAMFS load) when profiling is enabled.
-        #[cfg(feature = "profile-time")]
         if !ramfs_load_samples.is_empty() {
-            let mut setup_data: Vec<(&str, Vec<u128>)> =
-                vec![("ramfs_load", ramfs_load_samples.into_iter().map(u128::from).collect())];
+            let mut setup_data: Vec<(&str, Vec<u128>)> = vec![("ramfs_load", ramfs_load_samples)];
             super::print_latency_table("VM setup", "us", &mut setup_data);
         }
 
@@ -432,8 +724,7 @@ impl Benchmark {
 
     /// Runs `count` iterations of a single VFS operation, returning per-iteration latencies.
     async fn measure_iterations(
-        stdin: &mut ::tokio::process::ChildStdin,
-        stdout: &mut ::tokio::process::ChildStdout,
+        vm: &mut VfsBenchVm,
         opcode: VfsOp,
         manifest: &FatManifest,
         rng: &mut StdRng,
@@ -443,7 +734,7 @@ impl Benchmark {
         let mut latencies: Vec<u128> = Vec::with_capacity(count);
         for _ in 0..count {
             let path: &str = Self::pick_path(opcode, manifest, rng);
-            latencies.push(Self::timed_send_op(stdin, stdout, opcode.as_u8(), path).await?);
+            latencies.push(vm.run_op(opcode, path).await?);
             pb.inc(1);
         }
         Ok(latencies)
@@ -455,10 +746,8 @@ impl Benchmark {
     /// This alternation cancels systematic ordering bias (warm i-cache, branch predictor state).
     /// Each iteration stores `t_minuend − t_subtrahend` (saturating), so percentiles computed
     /// over the resulting vector reflect per-iteration paired differences.
-    #[allow(clippy::too_many_arguments)]
     async fn measure_paired_iterations(
-        stdin: &mut ::tokio::process::ChildStdin,
-        stdout: &mut ::tokio::process::ChildStdout,
+        vm: &mut VfsBenchVm,
         minuend: VfsOp,
         subtrahend: VfsOp,
         manifest: &FatManifest,
@@ -477,17 +766,13 @@ impl Benchmark {
             // difference remains across the full sample.
             let (t_min, t_sub): (u128, u128) = if i % 2 == 0 {
                 // Subtrahend first.
-                let t_sub: u128 =
-                    Self::timed_send_op(stdin, stdout, subtrahend.as_u8(), sub_path).await?;
-                let t_min: u128 =
-                    Self::timed_send_op(stdin, stdout, minuend.as_u8(), min_path).await?;
+                let t_sub: u128 = vm.run_op(subtrahend, sub_path).await?;
+                let t_min: u128 = vm.run_op(minuend, min_path).await?;
                 (t_min, t_sub)
             } else {
                 // Minuend first.
-                let t_min: u128 =
-                    Self::timed_send_op(stdin, stdout, minuend.as_u8(), min_path).await?;
-                let t_sub: u128 =
-                    Self::timed_send_op(stdin, stdout, subtrahend.as_u8(), sub_path).await?;
+                let t_min: u128 = vm.run_op(minuend, min_path).await?;
+                let t_sub: u128 = vm.run_op(subtrahend, sub_path).await?;
                 (t_min, t_sub)
             };
 
@@ -496,175 +781,11 @@ impl Benchmark {
         }
         Ok(deltas)
     }
-
-    /// Sends a single operation and returns its latency in microseconds.
-    async fn timed_send_op(
-        stdin: &mut ::tokio::process::ChildStdin,
-        stdout: &mut ::tokio::process::ChildStdout,
-        opcode: u8,
-        path: &str,
-    ) -> Result<u128> {
-        let start: Instant = Instant::now();
-        ::tokio::time::timeout(
-            Duration::from_secs(VFS_BENCH_TIMEOUT_SECS),
-            Self::send_op(stdin, stdout, opcode, path),
-        )
-        .await
-        .map_err(|_| {
-            anyhow::anyhow!("VFS benchmark timed out after {VFS_BENCH_TIMEOUT_SECS}s")
-        })??;
-        Ok(start.elapsed().as_micros())
-    }
-
-    /// Spawns a nanvixd process in interactive mode and returns the child, stdin, and stdout.
-    fn spawn_nanvixd(
-        nanvixd_bin: &Path,
-        ramfs: &str,
-        program: &str,
-        workspace_root: &Path,
-    ) -> Result<(
-        ::tokio::process::Child,
-        ::tokio::process::ChildStdin,
-        ::tokio::process::ChildStdout,
-    )> {
-        let mut cmd: Command = Command::new(nanvixd_bin);
-        cmd.arg(::nanvixd::args::Args::OPT_RAMFS_FILENAME)
-            .arg(ramfs)
-            .arg(::nanvixd::args::Args::OPT_SEPARATOR)
-            .arg(program)
-            .stdin(::std::process::Stdio::piped())
-            .stdout(::std::process::Stdio::piped())
-            .stderr(::std::process::Stdio::piped())
-            .current_dir(workspace_root)
-            .kill_on_drop(true);
-
-        let mut child: ::tokio::process::Child = cmd.spawn()?;
-
-        let stdin: ::tokio::process::ChildStdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("failed to take nanvixd stdin"))?;
-        let stdout: ::tokio::process::ChildStdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("failed to take nanvixd stdout"))?;
-
-        Ok((child, stdin, stdout))
-    }
-
-    /// Tears down a nanvixd process by closing stdin and waiting for exit. Returns optional
-    /// per-phase timing data parsed from stderr when the `profile-time` feature is enabled.
-    async fn teardown_nanvixd(
-        child: &mut ::tokio::process::Child,
-        stdin: ::tokio::process::ChildStdin,
-    ) -> Result<Option<serde_json::Map<String, serde_json::Value>>> {
-        // Close stdin to signal the guest to exit.
-        drop(stdin);
-
-        // Read any stderr output for diagnostics before waiting for exit.
-        let mut stderr: ::tokio::process::ChildStderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("failed to take nanvixd stderr"))?;
-
-        // When profiling, read stderr line-by-line looking for the PERF_TIMINGS line.
-        // This avoids relying on read_to_end() which only completes on EOF.
-        #[cfg(feature = "profile-time")]
-        let phase_timings: Option<serde_json::Map<String, serde_json::Value>> = {
-            let mut reader = BufReader::new(&mut stderr);
-            let mut timings = None;
-            let deadline = ::tokio::time::Instant::now() + STDERR_READ_TIMEOUT;
-            loop {
-                let mut line = String::new();
-                let remaining = deadline.saturating_duration_since(::tokio::time::Instant::now());
-                if remaining.is_zero() {
-                    break;
-                }
-                match ::tokio::time::timeout(remaining, reader.read_line(&mut line)).await {
-                    Ok(Ok(0)) => break, // EOF
-                    Ok(Ok(_)) => {
-                        let line = line.trim();
-                        if let Some(json_str) = line.strip_prefix(PERF_TIMINGS_PREFIX) {
-                            if let Ok(serde_json::Value::Object(map)) =
-                                serde_json::from_str(json_str)
-                            {
-                                timings = Some(map);
-                            }
-                            break;
-                        }
-                    },
-                    _ => break, // timeout or error
-                }
-            }
-            timings
-        };
-        #[cfg(not(feature = "profile-time"))]
-        let phase_timings: Option<serde_json::Map<String, serde_json::Value>> = None;
-
-        // Drain remaining stderr for diagnostics.
-        let stderr_output: String = {
-            let mut buf: Vec<u8> = Vec::new();
-            let _ = stderr.read_to_end(&mut buf).await;
-            String::from_utf8_lossy(&buf).to_string()
-        };
-
-        let status: ::std::process::ExitStatus = child.wait().await?;
-        if !status.success() {
-            if !stderr_output.is_empty() {
-                error!("nanvixd stderr:\n{stderr_output}");
-            }
-            anyhow::bail!("nanvixd exited with {status}");
-        }
-
-        Ok(phase_timings)
-    }
-
-    /// Sends the mount configuration byte and waits for the guest's mount-complete ACK.
-    ///
-    /// This must be called immediately after [`spawn_nanvixd()`] and before any
-    /// operation opcodes. The guest reads one byte to decide whether to mount the
-    /// ramfs as read-only or writable, then sends `ACK_OK` once the mount succeeds.
-    async fn send_mount_config(
-        stdin: &mut ::tokio::process::ChildStdin,
-        stdout: &mut ::tokio::process::ChildStdout,
-        config: u8,
-    ) -> Result<()> {
-        stdin.write_all(&[config]).await?;
-        stdin.flush().await?;
-        let mut ack: [u8; 1] = [0u8; 1];
-        ::tokio::time::timeout(Duration::from_secs(VFS_BENCH_TIMEOUT_SECS), async {
-            stdout.read_exact(&mut ack).await
-        })
-        .await
-        .map_err(|_| anyhow::anyhow!("guest mount timed out after {VFS_BENCH_TIMEOUT_SECS}s"))??;
-        if ack[0] != ACK_OK {
-            anyhow::bail!("guest reported mount error (config={config:#04x})");
-        }
-        Ok(())
-    }
-
-    /// Sends a single opcode and path to the guest and waits for the one-byte acknowledgement.
-    ///
-    /// Wire format: `[opcode: u8][path_len: u8][path: path_len bytes]` → `[ack: u8]`.
-    async fn send_op(
-        stdin: &mut ::tokio::process::ChildStdin,
-        stdout: &mut ::tokio::process::ChildStdout,
-        opcode: u8,
-        path: &str,
-    ) -> Result<()> {
-        let path_bytes: &[u8] = path.as_bytes();
-        let path_len: u8 =
-            u8::try_from(path_bytes.len()).map_err(|_| anyhow::anyhow!("path too long"))?;
-        stdin.write_all(&[opcode, path_len]).await?;
-        if path_len > 0 {
-            stdin.write_all(path_bytes).await?;
-        }
-        stdin.flush().await?;
-        let mut ack: [u8; 1] = [0u8; 1];
-        stdout.read_exact(&mut ack).await?;
-        if ack[0] != ACK_OK {
-            anyhow::bail!("guest reported error for opcode {opcode:#04x} path={path:?}");
-        }
-        Ok(())
-    }
 }
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests;
