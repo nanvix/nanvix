@@ -80,7 +80,10 @@ Startup in [`main.rs`](../../src/daemons/vfsd/src/main.rs) proceeds as follows:
 
 1. Read the daemon PID and attempt to initialize the VFS.
 2. Acquire the I/O-management capability long enough to map the `RAMFS   ` MMIO region.
-3. Attempt to mount either the `ROOTFS` entry of a multi-image or a legacy single image at `/`.
+3. Attempt to mount either the `ROOTFS` entry of a multi-image or a legacy single image at `/`. The
+   `ROOTFS` entry is mounted read-only if it carries the `FLAG_READONLY` flag, which lets the host
+   choose the root semantics of each VM when it builds the multi-image. A legacy single image is
+   always mounted writable.
 4. Send a signup request to `procd`.
 5. Wait for `SignupResponse`, buffering guest IPC that arrives before signup completes.
 6. Send a one-way `ConsoleInputSubscribe` IKC request.

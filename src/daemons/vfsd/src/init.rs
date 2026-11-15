@@ -92,16 +92,19 @@ pub(crate) fn vfs_init_ramfs() {
                 return false;
             }
 
-            // Mount ROOTFS at "/".
+            // Mount ROOTFS at "/", read-only if the container flags it so.
             if let Some(rootfs) =
                 ::multiimage::find_entry_by_tag(entries, &::multiimage::ROOTFS_MMIO_TAG)
             {
                 let sub_ptr: *mut u8 = unsafe { base_ptr.add(rootfs.offset as usize) };
                 let sub_size: usize = rootfs.size as usize;
-                if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, sub_ptr, sub_size, false) }
+                let readonly: bool = rootfs.is_readonly();
+                if unsafe { ::vfs::mount_image(RAMFS_MOUNT_PATH, sub_ptr, sub_size, readonly) }
                     .is_err()
                 {
                     ::syslog::warn!("vfs_init_ramfs(): failed to mount ROOTFS at /");
+                } else if readonly {
+                    ::syslog::info!("vfs_init_ramfs(): ROOTFS is mounted read-only");
                 }
             }
         } else {
