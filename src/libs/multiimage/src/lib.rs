@@ -126,6 +126,13 @@ pub struct ImageEntry {
     pub _pad: u32,
 }
 
+impl ImageEntry {
+    /// Returns `true` if the sub-image is flagged as read-only (see [`FLAG_READONLY`]).
+    pub const fn is_readonly(&self) -> bool {
+        self.flags & FLAG_READONLY != 0
+    }
+}
+
 //==================================================================================================
 // Error Types
 //==================================================================================================

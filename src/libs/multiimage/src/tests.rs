@@ -129,6 +129,23 @@ fn test_find_entry_by_tag_missing() {
 }
 
 #[test]
+fn test_entry_is_readonly() {
+    let entry_with_flags = |flags: u32| ImageEntry {
+        tag: *ROOTFS_MMIO_TAG.as_bytes(),
+        offset: HEAD_PAGE_SIZE as u64,
+        size: 4096,
+        flags,
+        _pad: 0,
+    };
+
+    assert!(!entry_with_flags(0).is_readonly());
+    assert!(entry_with_flags(FLAG_READONLY).is_readonly());
+    assert!(entry_with_flags(FLAG_READONLY | (1 << 5)).is_readonly());
+    // Flag bits other than FLAG_READONLY must not make an entry read-only.
+    assert!(!entry_with_flags(!FLAG_READONLY).is_readonly());
+}
+
+#[test]
 fn test_validate_entries_out_of_bounds() {
     let entries: [ImageEntry; 1] = [ImageEntry {
         tag: *ROOTFS_MMIO_TAG.as_bytes(),
