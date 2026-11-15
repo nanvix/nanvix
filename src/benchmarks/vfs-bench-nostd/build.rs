@@ -36,7 +36,9 @@ use rand::{
 // The walk stops when the cumulative bytes written reach `image_size / TREE_BUDGET_DIVISOR` or
 // the DFS stack is exhausted.
 //
-// **Pass 2 — Bulk fill.** Writes `BULK_FILE_SIZE` files in the root until the image is full.
+// **Pass 2 — Bulk fill.** Creates the scratch directory that the write operations work in, then
+// writes `BULK_FILE_SIZE` files in the root until only `FREE_SPACE_RESERVE` bytes are left free.
+// The write operations run on the root filesystem itself, so the image cannot be completely full.
 //
 // Tuning guide:
 //  - Deeper trees / more dirs per level → more directories, longer paths for `readdir` and
@@ -49,6 +51,8 @@ use rand::{
 //  - `MIN_FILE_SIZE` sets a hard floor on tree file sizes; `MAX_FILE_SIZE_CAP` sets the ceiling.
 //  - `BULK_FILE_SIZE` controls the granularity of the fill pass; only affects total file count
 //    and the `readdir_root` benchmark.
+//  - `FREE_SPACE_RESERVE` sets how much capacity stays free for the write operations, which run on
+//    the root filesystem itself and therefore need clusters to allocate.
 //  - `RNG_SEED` ensures deterministic generation; changing it produces a different tree layout
 //    with the same statistical properties.
 
@@ -89,9 +93,13 @@ const MAX_FILE_SIZE_CAP: usize = 512 * 1024;
 const TARGET_TREE_FILES: usize = 4096;
 
 /// Size of each bulk-fill file written in pass 2 (bytes).
-/// Affects how many large files appear in the root directory and how quickly the image reaches
+/// Affects how many large files appear in the root directory and how closely the image approaches
 /// full capacity. Only the root-level `readdir_large` benchmark is sensitive to this count.
 const BULK_FILE_SIZE: usize = 1024 * 1024;
+
+/// Capacity left free by pass 2 (bytes).
+/// The write operations allocate and release their clusters from this space.
+const FREE_SPACE_RESERVE: usize = 4 * 1024 * 1024;
 
 /// Fixed seed for the PRNG that drives directory/file creation.
 /// Changing this value produces a structurally different tree with the same statistical properties.
@@ -135,8 +143,9 @@ fn main() {
 /// clamped to \[[`MIN_FILE_SIZE`], [`MAX_FILE_SIZE_CAP`]\]. This keeps the total number of
 /// filesystem operations roughly constant regardless of image size, so the pass completes quickly.
 ///
-/// **Pass 2 — Bulk fill:** writes [`BULK_FILE_SIZE`] padding files in the root directory until
-/// the image is full, filling the remaining capacity with very few operations.
+/// **Pass 2 — Bulk fill:** creates the scratch directory and writes [`BULK_FILE_SIZE`] padding
+/// files in the root directory until [`FREE_SPACE_RESERVE`] bytes are left free, filling almost
+/// all the remaining capacity with very few operations.
 fn generate_dense_fat_image(path: &Path, image_size: usize) {
     // Derive tree parameters from the target image size.
     let tree_budget: usize = image_size / TREE_BUDGET_DIVISOR;
@@ -229,19 +238,25 @@ fn generate_dense_fat_image(path: &Path, image_size: usize) {
     }
 
     //==============================================================================================
-    // Pass 2 — Fill remaining capacity with large bulk files.
+    // Pass 2 — Create the scratch directory, then fill the remaining capacity with large bulk
+    // files, leaving FREE_SPACE_RESERVE bytes free.
     //==============================================================================================
 
+    root.create_dir(vfs_bench_common::SCRATCH_DIR.trim_start_matches('/'))
+        .expect("failed to create scratch directory");
+
+    let stats: fatfs::FileSystemStats = fs
+        .stats()
+        .expect("failed to query FAT filesystem statistics");
+    let free_bytes: usize = stats.free_clusters() as usize * stats.cluster_size() as usize;
+    let bulk_files: usize = free_bytes.saturating_sub(FREE_SPACE_RESERVE) / BULK_FILE_SIZE;
+
     let bulk_data: Vec<u8> = vec![0xAA; BULK_FILE_SIZE];
-    for i in 0.. {
-        let Ok(mut file) = root.create_file(&format!("bulk{i}.dat")) else {
-            break;
-        };
-        if fatfs::Write::write_all(&mut file, &bulk_data).is_err() {
-            break;
-        }
-        if fatfs::Write::flush(&mut file).is_err() {
-            break;
-        }
+    for i in 0..bulk_files {
+        let mut file = root
+            .create_file(&format!("bulk{i}.dat"))
+            .expect("failed to create bulk file");
+        fatfs::Write::write_all(&mut file, &bulk_data).expect("failed to write bulk file");
+        fatfs::Write::flush(&mut file).expect("failed to flush bulk file");
     }
 }

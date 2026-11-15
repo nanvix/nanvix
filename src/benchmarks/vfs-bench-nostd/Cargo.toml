@@ -14,16 +14,13 @@ homepage.workspace = true
 name = "vfs-bench-nostd"
 
 [dependencies]
-cfg-if = { workspace = true }
 nvx = { workspace = true }
 nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
 libc_string = { workspace = true }
-sys = { workspace = true, features = ["kcall"] }
+sys = { workspace = true }
 sysalloc = { workspace = true }
 sysapi = { workspace = true }
 syscall = { workspace = true, features = ["syscall"] }
-syslog = { workspace = true, default-features = true }
-vfs = { workspace = true }
 vfs-bench-common = { workspace = true }
 
 [build-dependencies]
@@ -35,12 +32,12 @@ vfs-bench-common = { workspace = true }
 
 [features]
 default = ["panic"]
-trace = ["nvx/trace", "syslog/trace", "nvx-crt0/trace"]
-debug = ["nvx/debug", "syslog/debug", "nvx-crt0/debug"]
-info = ["nvx/info", "syslog/info", "nvx-crt0/info"]
-warn = ["nvx/warn", "syslog/warn", "nvx-crt0/warn"]
-error = ["nvx/error", "syslog/error", "nvx-crt0/error"]
-panic = ["nvx/panic", "syslog/panic", "nvx-crt0/panic"]
+trace = ["nvx/trace", "syscall/trace", "nvx-crt0/trace"]
+debug = ["nvx/debug", "syscall/debug", "nvx-crt0/debug"]
+info = ["nvx/info", "syscall/info", "nvx-crt0/info"]
+warn = ["nvx/warn", "syscall/warn", "nvx-crt0/warn"]
+error = ["nvx/error", "syscall/error", "nvx-crt0/error"]
+panic = ["nvx/panic", "syscall/panic", "nvx-crt0/panic"]
 
 [lints]
 workspace = true
