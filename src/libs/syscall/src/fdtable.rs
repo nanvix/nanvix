@@ -377,11 +377,6 @@ fn resolve_via_vfsd(fd: i32) -> Result<VfsdResolution, Error> {
         Ok(pid) => pid,
         Err(_) => return Ok(VfsdResolution::Unavailable),
     };
-    // A no-vfs image may assign the reserved vfsd pid to its workload. In that case a resolution
-    // request would loop back to the caller instead of reaching a descriptor authority.
-    if pid == crate::VFS_DESTINATION {
-        return Ok(VfsdResolution::Unavailable);
-    }
 
     // Send the resolution query to vfsd and await its authoritative answer.
     let mut request: Message =
