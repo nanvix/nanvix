@@ -16,6 +16,7 @@ use crate::{
             FatFile,
             IntoFileInner,
         },
+        readonly_file::ReadOnlyFatFile,
         storage::{
             RawMemoryStorage,
             ReadOnlyMemoryStorage,
@@ -29,6 +30,7 @@ use crate::{
             FAT_EPOCH_SECS,
         },
         InternalFatFs,
+        ReadOnlyInternalFatFile,
         ReadOnlyInternalFatFs,
     },
     FatResolvedPath,
@@ -95,7 +97,14 @@ unsafe impl Send for Fat {}
 
 impl Fat {
     /// Returns `true` if this filesystem is backed by read-only storage.
-    fn is_readonly(&self) -> bool {
+    ///
+    /// # Description
+    ///
+    /// A read-only filesystem rejects every modification, and its files can be opened with
+    /// [`Fat::open_readonly()`], which only a read-only filesystem supports.
+    #[inline]
+    #[must_use]
+    pub fn is_readonly(&self) -> bool {
         matches!(self.inner, FatInner::ReadOnly(_))
     }
 
@@ -266,6 +275,41 @@ impl Fat {
                 Ok(FatFile::new(file.into_file_inner(), read, write, &self.epoch))
             }
         })
+    }
+
+    /// Opens an existing file of a read-only filesystem for reading.
+    ///
+    /// # Description
+    ///
+    /// Unlike [`Fat::open()`], this returns a [`ReadOnlyFatFile`], which can only read and which
+    /// does not check what it was opened for. A file of a read-only filesystem can never be
+    /// written, so the reads of that file need not pay for the checks of a file that might be.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Path relative to the FAT root (e.g., "subdir/file.txt").
+    ///
+    /// # Returns
+    ///
+    /// A new [`ReadOnlyFatFile`] handle, or an error.
+    ///
+    /// # Errors
+    ///
+    /// - [`Fat32Error::NotSupported`] if this filesystem is not read-only, see
+    ///   [`Fat::is_readonly()`].
+    /// - [`Fat32Error::NotFound`] if the file doesn't exist.
+    /// - [`Fat32Error::InvalidPath`] if the path refers to a directory.
+    pub fn open_readonly(&self, path: &FatResolvedPath) -> Result<ReadOnlyFatFile<'_>, Fat32Error> {
+        match &self.inner {
+            FatInner::ReadOnly(fs) => {
+                let file: ReadOnlyInternalFatFile<'_> = fs
+                    .root_dir()
+                    .open_file(path.as_str())
+                    .map_err(map_fatfs_error)?;
+                Ok(ReadOnlyFatFile::new(file))
+            },
+            FatInner::ReadWrite(_) => Err(Fat32Error::NotSupported),
+        }
     }
 
     /// Creates a new file, failing if it already exists.

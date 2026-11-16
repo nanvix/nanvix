@@ -16,7 +16,10 @@ use crate::{
     error::Fat32Error,
     fat::{
         epoch::Epoch,
-        error::map_fatfs_error,
+        error::{
+            map_fatfs_error,
+            MemoryIoError,
+        },
         InternalFatFile,
         ReadOnlyInternalFatFile,
     },
@@ -192,13 +195,7 @@ impl<'a> FatFile<'a> {
         if let Some(len) = self.cached_len {
             return Ok(len);
         }
-        let len: u64 = dispatch_file!(self, |file| {
-            let current: u64 = file.seek(SeekFrom::Current(0)).map_err(map_fatfs_error)?;
-            let size: u64 = file.seek(SeekFrom::End(0)).map_err(map_fatfs_error)?;
-            file.seek(SeekFrom::Start(current))
-                .map_err(map_fatfs_error)?;
-            size
-        });
+        let len: u64 = dispatch_file!(self, |file| { seek_len(file) })?;
         self.cached_len = Some(len);
         Ok(len)
     }
@@ -367,4 +364,35 @@ impl fmt::Debug for FatFile<'_> {
             .field("can_write", &self.can_write)
             .finish_non_exhaustive()
     }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+/// Queries the size of a file by seeking, and restores its position.
+///
+/// fatfs exposes the size of an open file only through seeking to its end, which walks the cluster
+/// chain of the file.
+///
+/// # Parameters
+///
+/// - `file`: The file to query.
+///
+/// # Returns
+///
+/// The size of the file in bytes, or an error if seeking fails.
+///
+/// # Errors
+///
+/// - [`Fat32Error::IoError`] if seeking fails.
+pub(super) fn seek_len<F>(file: &mut F) -> Result<u64, Fat32Error>
+where
+    F: Seek<Error = ::fatfs::Error<MemoryIoError>>,
+{
+    let current: u64 = file.seek(SeekFrom::Current(0)).map_err(map_fatfs_error)?;
+    let size: u64 = file.seek(SeekFrom::End(0)).map_err(map_fatfs_error)?;
+    file.seek(SeekFrom::Start(current))
+        .map_err(map_fatfs_error)?;
+    Ok(size)
 }
