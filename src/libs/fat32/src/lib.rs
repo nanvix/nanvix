@@ -42,6 +42,7 @@ pub use crate::{
         Fat,
         FatFile,
         RawMemoryStorage,
+        ReadOnlyFatFile,
         ReadOnlyMemoryStorage,
         FAT_EPOCH_SECS,
     },

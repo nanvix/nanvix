@@ -9,6 +9,7 @@
 //! - [`NanvixTimeProvider`]: TimeProvider backed by the wall clock.
 //! - [`Fat`]: High-level FAT filesystem wrapper for guest operations.
 //! - [`FatFile`]: File handle for FAT files.
+//! - [`ReadOnlyFatFile`]: File handle for the files of read-only FAT filesystems.
 
 //==================================================================================================
 // Modules
@@ -18,6 +19,7 @@ mod epoch;
 mod error;
 mod file;
 mod filesystem;
+mod readonly_file;
 mod storage;
 mod time;
 
@@ -28,6 +30,7 @@ mod time;
 pub use self::{
     file::FatFile,
     filesystem::Fat,
+    readonly_file::ReadOnlyFatFile,
     storage::{
         RawMemoryStorage,
         ReadOnlyMemoryStorage,
