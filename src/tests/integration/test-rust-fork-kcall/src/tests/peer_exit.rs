@@ -23,6 +23,8 @@
 //!
 //! - [`test_peer_exit_interrupts_pull`]: the parent blocks in `pull()` waiting for a `push()` that
 //!   the child never issues.
+//! - [`test_peer_exit_interrupts_push`]: the parent blocks in `push()` waiting for a `pull()` that
+//!   the child never issues.
 
 //==================================================================================================
 // Imports
@@ -235,6 +237,28 @@ fn test_peer_exit_interrupts_pull() -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Peer Exit While Blocked In push()
+//==================================================================================================
+
+/// Verifies that the exit of a peer interrupts a thread that is blocked in `push()` waiting for it.
+///
+/// The parent blocks in `push()`, with no timeout, to a child that never pulls. The child exits
+/// while the parent is blocked, so `do_exit()` has to release a pending push whose destination is
+/// the exiting process. Waking the pusher through `do_wakeup()` from there would dereference the
+/// empty running slot and panic the kernel, just as it does for a puller.
+fn test_peer_exit_interrupts_push() -> Result<(), Error> {
+    let (child_pid, child_tid): (ProcessIdentifier, ThreadIdentifier) = fork_exiting_peer()?;
+
+    let buffer: [u8; TRANSFER_LEN] = [0u8; TRANSFER_LEN];
+    let result: Result<(), Error> = ipc::__kcall_push(child_pid, child_tid, &buffer);
+    assert_interrupted("push", result);
+
+    reap_child(child_pid);
+
+    Ok(())
+}
+
+//==================================================================================================
 // Public Entry Point
 //==================================================================================================
 
@@ -243,5 +267,7 @@ pub fn run() -> Result<(), Error> {
     ::syslog::info!("test-fork-kcall: starting peer-exit rendezvous tests");
     test_peer_exit_interrupts_pull()?;
     ::syslog::info!("test-fork-kcall: PASS - peer_exit_interrupts_pull");
+    test_peer_exit_interrupts_push()?;
+    ::syslog::info!("test-fork-kcall: PASS - peer_exit_interrupts_push");
     Ok(())
 }
