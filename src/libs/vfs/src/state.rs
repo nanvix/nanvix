@@ -8,6 +8,13 @@
 //! before using any filesystem operations, then use [`mount_image()`] or
 //! [`create_mount()`] to add FAT filesystems.
 //!
+//! # Mount Lifetime
+//!
+//! A mount that [`mount_image()`] adds is permanent: it can never be unmounted. A mount that
+//! [`create_mount()`] adds can be unmounted by [`unmount()`], which refuses to do it while files
+//! that were opened from the mount are still open. Only the files of the latter are counted, as
+//! the files of a permanent mount cannot outlive it.
+//!
 //! # Thread Safety
 //!
 //! All FAT filesystem and open-file-handle access is serialized by [`VFS_STATE`]. Nanvix guests
@@ -55,7 +62,8 @@ static VFS_STATE: Mutex<Option<Vfs>> = Mutex::new(None);
 /// memory deallocation. Protected by a spin mutex.
 static GUEST_MOUNTS: Mutex<Vec<GuestMountInfo>> = Mutex::new(Vec::new());
 
-/// Tracks the number of open files per mount path. Protected by a spin mutex.
+/// Tracks the number of open files per mount path, for the mounts that can be unmounted. Protected
+/// by a spin mutex.
 static OPEN_FILE_COUNTS: Mutex<Vec<OpenFileCount>> = Mutex::new(Vec::new());
 
 //==================================================================================================
@@ -159,6 +167,9 @@ pub fn is_initialized() -> bool {
 ///
 /// Mounts an existing FAT image from a memory region.
 ///
+/// The mount is permanent: it can never be unmounted, see [`Mount::into_permanent()`]. The files
+/// that are opened from it are not counted, because they cannot outlive it.
+///
 /// # Parameters
 ///
 /// - `mount_path`: Absolute path where the mount will be accessible
@@ -201,7 +212,7 @@ pub unsafe fn mount_image(
     } else {
         unsafe { Fat::from_memory(ptr, size)? }
     };
-    let mount: Mount = Mount::new(String::from(mount_path), fat, readonly)?;
+    let mount: Mount = Mount::new(String::from(mount_path), fat, readonly)?.into_permanent();
 
     let mut state = VFS_STATE.lock();
     let vfs: &mut Vfs = state.as_mut().ok_or(Fat32Error::NotInitialized)?;
@@ -289,9 +300,8 @@ pub fn create_mount(mount_path: &str, size: usize) -> Result<(), Fat32Error> {
 
 /// Unmounts a guest-created FAT mount and frees its memory.
 ///
-/// Only mounts created via [`create_mount()`] can be unmounted.
-/// Attempting to unmount a mount created via [`mount_image()`] will fail with
-/// [`Fat32Error::PermissionDenied`].
+/// Only mounts created via [`create_mount()`] can be unmounted. The mounts that [`mount_image()`]
+/// adds are permanent, so attempting to unmount one fails with [`Fat32Error::PermissionDenied`].
 ///
 /// # Parameters
 ///
@@ -308,7 +318,7 @@ pub fn unmount(mount_path: &str) -> Result<(), Fat32Error> {
     // Lock ordering: each step acquires and releases a single lock before
     // proceeding to the next. The sequence is:
     //   1. GUEST_MOUNTS  (check ownership)
-    //   2. OPEN_FILE_COUNTS  (via has_open_files — check for busy mount)
+    //   2. OPEN_FILE_COUNTS  (via open_file_count — check for busy mount)
     //   3. GUEST_MOUNTS  (remove tracking entry)
     //   4. VFS_STATE  (remove mount)
     //   5. GUEST_MOUNTS  (rollback on error, if needed)
@@ -333,7 +343,7 @@ pub fn unmount(mount_path: &str) -> Result<(), Fat32Error> {
     // mount removal below. A concurrent `open()` call could create a
     // new file handle after this check passes. A single-lock design
     // or a mount-level lock would eliminate this window.
-    if has_open_files(mount_path) {
+    if open_file_count(mount_path) > 0 {
         return Err(Fat32Error::FileLocked);
     }
 
@@ -431,7 +441,8 @@ where
 
 /// Increments the open file count for a mount path.
 ///
-/// Called when a file is successfully opened.
+/// Called when a file is successfully opened from a mount that can be unmounted. The files of a
+/// permanent mount are not counted.
 pub(crate) fn increment_open_count(mount_path: &str) {
     let mut counts = OPEN_FILE_COUNTS.lock();
     for entry in counts.iter_mut() {
@@ -448,7 +459,7 @@ pub(crate) fn increment_open_count(mount_path: &str) {
 
 /// Decrements the open file count for a mount path.
 ///
-/// Called when a file is closed (dropped).
+/// Called when a file that [`increment_open_count()`] counted is closed (dropped).
 pub(crate) fn decrement_open_count(mount_path: &str) {
     let mut counts = OPEN_FILE_COUNTS.lock();
     for entry in counts.iter_mut() {
@@ -459,12 +470,13 @@ pub(crate) fn decrement_open_count(mount_path: &str) {
     }
 }
 
-/// Returns true if there are open files on the given mount.
-fn has_open_files(mount_path: &str) -> bool {
+/// Returns the number of open files that are counted for the given mount.
+pub(crate) fn open_file_count(mount_path: &str) -> usize {
     let counts = OPEN_FILE_COUNTS.lock();
     counts
         .iter()
-        .any(|e| e.mount_path == mount_path && e.count > 0)
+        .find(|entry| entry.mount_path == mount_path)
+        .map_or(0, |entry| entry.count)
 }
 
 /// Formats a memory region as a FAT filesystem.

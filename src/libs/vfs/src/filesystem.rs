@@ -689,7 +689,7 @@ pub(crate) fn open(
     // Open the file under a single VFS lock scope, resolving both the
     // mount path and file handle together. This avoids aliased &/&mut
     // references that the previous implementation created.
-    let (fat_file, mount_path) = state::with_vfs_mut(|vfs| {
+    let (fat_file, tracked_mount) = state::with_vfs_mut(|vfs| {
         let mount = vfs
             .get_mount_mut(fat_path.mount_index)
             .ok_or(Fat32Error::NotFound)?;
@@ -698,7 +698,6 @@ pub(crate) fn open(
         if mount.has_non_directory_ancestor(&fat_path.path) {
             return Err(Fat32Error::NotADirectory);
         }
-        let mount_path: String = String::from(mount.path());
 
         let fat_file = if create_new {
             mount.fat().create_new(&fat_path.path, read, write)?
@@ -708,25 +707,34 @@ pub(crate) fn open(
                 .open(&fat_path.path, read, write, create, truncate)?
         };
 
+        // Only the files of a mount that can be unmounted are counted.
+        let tracked_mount: Option<String> =
+            (!mount.is_permanent()).then(|| String::from(mount.path()));
+
         // SAFETY: The FatFile borrows from the FAT filesystem stored in the
         // global VFS static. This lifetime extension is safe because:
         // 1. The VFS is stored in a global static and is never dropped.
-        // 2. Mounts with open files cannot be removed — `state::unmount()`
-        //    checks `has_open_files()` and returns `FileLocked` if any
-        //    `File` handles (which call `increment_open_count` here and
-        //    `decrement_open_count` on `Drop`) are still alive.
+        // 2. The mount that the file is opened from cannot be removed while
+        //    the file is open. A permanent mount is never removed, since
+        //    `Vfs::remove_mount()` rejects it. Any other mount is only
+        //    removed by `state::unmount()`, which checks `open_file_count()`
+        //    and returns `FileLocked` if any `File` handles (which call
+        //    `increment_open_count` here and `decrement_open_count` on `Drop`)
+        //    are still alive.
         // 3. The Mutex ensures exclusive access during file handle creation.
         //
-        // IMPORTANT: Any change to `state::unmount()` or the open-file
-        // counting must preserve this invariant; otherwise this is unsound.
-        // See also the TOCTOU note in `state::unmount()`.
+        // IMPORTANT: Any change to `Vfs::remove_mount()`, to `state::unmount()`
+        // or to the open-file counting must preserve this invariant; otherwise
+        // this is unsound. See also the TOCTOU note in `state::unmount()`.
         let fat_file: FatFile<'static> = unsafe { core::mem::transmute(fat_file) };
 
-        Ok((fat_file, mount_path))
+        Ok((fat_file, tracked_mount))
     })?;
 
     // Track the open file (outside VFS lock to avoid nested locking).
-    state::increment_open_count(&mount_path);
+    if let Some(mount_path) = &tracked_mount {
+        state::increment_open_count(mount_path);
+    }
 
-    Ok(File::new(fat_file, mount_path))
+    Ok(File::new(fat_file, tracked_mount))
 }
