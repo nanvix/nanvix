@@ -182,6 +182,7 @@ dc1b72acca24db7b5a33de68b3a9dae126dda7ce,Daemons,stat,100,18579,18629,18696
 dc1b72acca24db7b5a33de68b3a9dae126dda7ce,Daemons,read,100,15528,15573,15651
 dc1b72acca24db7b5a33de68b3a9dae126dda7ce,Daemons,write,100,15881,15933,16099
 dc1b72acca24db7b5a33de68b3a9dae126dda7ce,Daemons,open+close,100,25073,25176,25206
+<<<<<<< Updated upstream
 3b2f973831f4ebf5aefcc12a8d9b25cedd0d2c84,Kernel,getppid,100,282,286,301
 3b2f973831f4ebf5aefcc12a8d9b25cedd0d2c84,Kernel,clock_gettime,100,882,890,898
 3b2f973831f4ebf5aefcc12a8d9b25cedd0d2c84,Kernel,sched_yield,100,3782,3956,4024
@@ -191,3 +192,14 @@ dc1b72acca24db7b5a33de68b3a9dae126dda7ce,Daemons,open+close,100,25073,25176,2520
 3b2f973831f4ebf5aefcc12a8d9b25cedd0d2c84,Daemons,read,100,15220,15467,15519
 3b2f973831f4ebf5aefcc12a8d9b25cedd0d2c84,Daemons,write,100,15873,15934,16072
 3b2f973831f4ebf5aefcc12a8d9b25cedd0d2c84,Daemons,open+close,100,24933,25188,25732
+=======
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Kernel,getppid,100,282,284,294
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Kernel,clock_gettime,100,880,882,886
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Kernel,sched_yield,100,3868,3943,3959
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Daemons,getpgrp,100,10831,10877,10982
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Daemons,fstat,100,17660,17804,17879
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Daemons,stat,100,18273,18561,18590
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Daemons,read,100,15428,15486,15716
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Daemons,write,100,15746,15893,16176
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Daemons,open+close,100,24944,25110,25577
+>>>>>>> Stashed changes
