@@ -9,6 +9,7 @@ use ::sys::error::Error;
 
 mod bulk_unaligned;
 mod fork;
+mod peer_exit;
 
 //==================================================================================================
 // Standalone Functions
@@ -18,5 +19,6 @@ mod fork;
 pub fn run_all() -> Result<(), Error> {
     fork::run()?;
     bulk_unaligned::run()?;
+    peer_exit::run()?;
     Ok(())
 }
