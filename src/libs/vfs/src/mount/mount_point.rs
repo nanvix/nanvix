@@ -30,6 +30,13 @@ use ::fat32::{
 /// filesystem is modified through the [`Fat`] that [`Mount::fat()`] returns, or through the files
 /// that are opened from it. The cache lives and dies with the filesystem, because a mount never
 /// gives its [`Fat`] out by value or by mutable reference.
+///
+/// # Permanence
+///
+/// A mount is permanent when it can never be removed from the VFS, see [`Mount::into_permanent()`].
+/// A file that is opened from a permanent mount cannot outlive the mount, so the VFS does not need
+/// to count the open files of such a mount, which is what keeps any other mount from being removed
+/// while it is in use.
 pub struct Mount {
     /// Absolute path where this mount is rooted.
     path: String,
@@ -37,6 +44,8 @@ pub struct Mount {
     fat: Fat,
     /// Whether the mount rejects mutating operations.
     readonly: bool,
+    /// Whether the mount can never be removed from the VFS.
+    permanent: bool,
     /// Cache of the lookups answered by `fat`.
     cache: MetadataCache,
 }
@@ -46,7 +55,7 @@ pub struct Mount {
 //==================================================================================================
 
 impl Mount {
-    /// Creates a mount point.
+    /// Creates a mount point that can be removed from the VFS.
     ///
     /// # Errors
     ///
@@ -59,8 +68,18 @@ impl Mount {
             path,
             fat,
             readonly,
+            permanent: false,
             cache: MetadataCache::new(),
         })
+    }
+
+    /// Makes this mount permanent, so that it can never be removed from the VFS.
+    ///
+    /// [`Vfs::remove_mount()`](super::Vfs::remove_mount) rejects a permanent mount.
+    #[must_use]
+    pub fn into_permanent(mut self) -> Self {
+        self.permanent = true;
+        self
     }
 
     /// Returns the mount path.
@@ -79,6 +98,12 @@ impl Mount {
     #[inline]
     pub fn readonly(&self) -> bool {
         self.readonly
+    }
+
+    /// Returns whether this mount can never be removed from the VFS.
+    #[inline]
+    pub fn is_permanent(&self) -> bool {
+        self.permanent
     }
 
     /// Gets file or directory metadata, answering from the metadata cache when it can.

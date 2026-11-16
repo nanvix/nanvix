@@ -274,6 +274,35 @@ fn remove_nonexistent_mount_fails() {
     assert_eq!(err, Fat32Error::NotFound, "should fail with NotFound");
 }
 
+/// Tests that a permanent mount cannot be removed, that the failed removal leaves the VFS as it
+/// was, and that a mount that is not permanent can still be removed beside it.
+#[test]
+fn remove_permanent_mount_fails() {
+    let mut vfs: Vfs = Vfs::new();
+    let (permanent, _buf1) = make_mount("/data");
+    let (removable, _buf2) = make_mount("/data/sub");
+    vfs.add_mount(permanent.into_permanent())
+        .expect("add /data should succeed");
+    vfs.add_mount(removable)
+        .expect("add /data/sub should succeed");
+    let _ = vfs
+        .resolve_legacy("/data/file.txt", "/")
+        .expect("resolve should succeed");
+    assert_eq!(vfs.resolve_cache_len(), 1, "resolve should cache the result");
+
+    let err: Fat32Error = vfs
+        .remove_mount("/data")
+        .map(|_| ())
+        .expect_err("should fail");
+    assert_eq!(err, Fat32Error::PermissionDenied, "a permanent mount should not be removable");
+    assert_eq!(vfs.mount_count(), 2, "the permanent mount should stay");
+    assert_eq!(vfs.resolve_cache_len(), 1, "a failed removal should keep the cache");
+
+    vfs.remove_mount("/data/sub")
+        .expect("remove_mount should succeed for a mount that is not permanent");
+    assert_eq!(vfs.mount_count(), 1, "only the permanent mount should be left");
+}
+
 /// Tests resolving when no mounts exist fails.
 #[test]
 fn resolve_no_mounts_fails() {
@@ -510,6 +539,19 @@ fn mount_writable_flag() {
 fn mount_readonly_flag() {
     let (mount, _buf) = make_readonly_mount("/data");
     assert!(mount.readonly(), "read-only mount should return true");
+}
+
+/// Tests that a mount is not permanent unless it is made so, and that making it so changes nothing
+/// else about it.
+#[test]
+fn mount_permanent_flag() {
+    let (mount, _buf) = make_mount("/data");
+    assert!(!mount.is_permanent(), "a mount should be removable by default");
+
+    let mount: Mount = mount.into_permanent();
+    assert!(mount.is_permanent(), "the mount should be permanent");
+    assert_eq!(mount.path(), "/data", "the path of the mount should not change");
+    assert!(!mount.readonly(), "the mount should not become read-only");
 }
 
 // -- Tilde is no longer expanded server-side ---------------------------------

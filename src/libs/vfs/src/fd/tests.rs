@@ -318,6 +318,83 @@ fn unmount_flushes_fat_before_freeing_image() {
     forget_processes(&[pid]);
 }
 
+/// Formats a FAT image that holds the file `data.txt`, with the contents `permanent`, and leaks it.
+///
+/// The image of a permanent mount must outlive the program, as the mount is never removed.
+fn leak_image_with_data_file() -> (*mut u8, usize) {
+    let size: usize = crate::state::MIN_FAT_SIZE;
+    let ptr: *mut u8 = Box::leak(alloc::vec![0u8; size].into_boxed_slice()).as_mut_ptr();
+    let mut storage: ::fat32::RawMemoryStorage =
+        unsafe { ::fat32::RawMemoryStorage::new(ptr, size).expect("valid storage") };
+    ::fatfs::format_volume(&mut storage, ::fatfs::FormatVolumeOptions::new())
+        .expect("format image");
+
+    // Dropping the filesystem flushes it to the image.
+    let fat: ::fat32::Fat = unsafe { ::fat32::Fat::from_memory(ptr, size).expect("valid fat") };
+    let path: ::fat32::FatResolvedPath =
+        ::fat32::FatResolvedPath::new(String::from("data.txt")).expect("valid path");
+    let mut file = fat
+        .create_new(&path, false, true)
+        .expect("create data file");
+    file.write(b"permanent").expect("write data file");
+    (ptr, size)
+}
+
+/// Tests that the open files of a mount that can be unmounted are counted, so that it cannot be
+/// unmounted while they are open, while the open files of a permanent mount are not counted.
+#[test]
+fn open_files_are_counted_only_on_removable_mounts() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7420);
+    set_current_process(pid);
+    let removable: &str = "/count-removable";
+    let permanent_rw: &str = "/count-permanent-rw";
+    let permanent_ro: &str = "/count-permanent-ro";
+
+    crate::state::create_mount(removable, crate::state::MIN_FAT_SIZE).expect("create mount");
+    let create_flags: c_int = file_access_mode::O_RDWR | file_creation_flags::O_CREAT;
+    let fd: c_int = vfs_open("/count-removable/file", create_flags).expect("open file");
+    assert_eq!(crate::state::open_file_count(removable), 1);
+    vfs_close(fd).expect("close file");
+    assert_eq!(crate::state::open_file_count(removable), 0);
+    crate::state::unmount(removable).expect("unmount filesystem");
+
+    let (ptr, size): (*mut u8, usize) = leak_image_with_data_file();
+    // SAFETY: The image is leaked, and nothing else uses it.
+    unsafe { crate::state::mount_image(permanent_rw, ptr, size, false) }
+        .expect("mount read-write image");
+    let fd: c_int = vfs_open("/count-permanent-rw/data.txt", file_access_mode::O_RDWR)
+        .expect("open file of read-write mount");
+    assert_eq!(crate::state::open_file_count(permanent_rw), 0);
+    let mut data: [u8; 9] = [0; 9];
+    assert_eq!(vfs_read(fd, &mut data), Ok(9));
+    assert_eq!(&data, b"permanent");
+    vfs_close(fd).expect("close file");
+
+    let (ptr, size): (*mut u8, usize) = leak_image_with_data_file();
+    // SAFETY: The image is leaked, and nothing else uses it.
+    unsafe { crate::state::mount_image(permanent_ro, ptr, size, true) }
+        .expect("mount read-only image");
+    let mut file: filesystem::File = filesystem::open_anchored(
+        AnchoredPath::new(AT_FDCWD, String::from("/count-permanent-ro/data.txt"))
+            .expect("anchor path"),
+    )
+    .expect("open file of read-only mount");
+    assert_eq!(crate::state::open_file_count(permanent_ro), 0);
+    assert_eq!(file.read_to_vec().expect("read file"), b"permanent");
+    drop(file);
+
+    for mount in [permanent_rw, permanent_ro] {
+        assert_eq!(crate::state::unmount(mount), Err(Fat32Error::PermissionDenied));
+        let removal = crate::state::with_vfs_mut(|vfs| vfs.remove_mount(mount).map(drop));
+        assert_eq!(removal, Err(Fat32Error::PermissionDenied), "{mount} must not be removable");
+    }
+    forget_processes(&[pid]);
+}
+
 /// Hostfs cwd bookkeeping preserves spelling; local chdir retains its normalization policy.
 #[test]
 fn hostfs_cwd_preserves_path_spelling() {

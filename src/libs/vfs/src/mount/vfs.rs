@@ -120,13 +120,19 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// Returns [`Fat32Error::NotFound`] if no mount exists at this path.
+    /// - [`Fat32Error::NotFound`] if no mount exists at this path.
+    /// - [`Fat32Error::PermissionDenied`] if the mount is permanent, see
+    ///   [`Mount::into_permanent()`].
     pub fn remove_mount(&mut self, path: &str) -> Result<Mount, Fat32Error> {
-        let pos: usize = self
+        let (pos, mount): (usize, &Mount) = self
             .mounts
             .iter()
-            .position(|mount| mount.path() == path)
+            .enumerate()
+            .find(|(_, mount)| mount.path() == path)
             .ok_or(Fat32Error::NotFound)?;
+        if mount.is_permanent() {
+            return Err(Fat32Error::PermissionDenied);
+        }
 
         let removed: Mount = self.mounts.remove(pos);
         // The mount table changed: cached resolutions (including mount

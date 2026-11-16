@@ -45,8 +45,8 @@ use ::sysapi::unistd::file_seek;
 pub struct File {
     /// The underlying FAT file handle.
     inner: ManuallyDrop<FatFile<'static>>,
-    /// The mount path this file belongs to (for open file tracking).
-    mount_path: String,
+    /// The path of the mount that counts this file as open, if the mount can be unmounted.
+    tracked_mount: Option<String>,
 }
 
 //==================================================================================================
@@ -54,11 +54,17 @@ pub struct File {
 //==================================================================================================
 
 impl File {
-    /// Creates a file handle and associates it with its mount point.
-    pub(super) fn new(inner: FatFile<'static>, mount_path: String) -> Self {
+    /// Creates a file handle.
+    ///
+    /// # Parameters
+    ///
+    /// - `inner`: The underlying FAT file handle.
+    /// - `tracked_mount`: The path of the mount that counts this file as open, if the mount can be
+    ///   unmounted. The handle uncounts the file when it is dropped.
+    pub(super) fn new(inner: FatFile<'static>, tracked_mount: Option<String>) -> Self {
         Self {
             inner: ManuallyDrop::new(inner),
-            mount_path,
+            tracked_mount,
         }
     }
 
@@ -215,7 +221,7 @@ impl File {
 impl core::fmt::Debug for File {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("File")
-            .field("mount_path", &self.mount_path)
+            .field("tracked_mount", &self.tracked_mount)
             .field("writable", &self.is_writable())
             .finish_non_exhaustive()
     }
@@ -228,6 +234,8 @@ impl Drop for File {
             // holding the same lock that serializes every other FAT filesystem operation.
             unsafe { ManuallyDrop::drop(&mut self.inner) };
         });
-        state::decrement_open_count(&self.mount_path);
+        if let Some(mount_path) = &self.tracked_mount {
+            state::decrement_open_count(mount_path);
+        }
     }
 }
