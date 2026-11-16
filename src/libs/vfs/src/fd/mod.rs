@@ -1032,6 +1032,7 @@ pub fn vfs_resolve(fd: c_int) -> Option<(VfsRoute, c_int)> {
         VfsFileHandle::Terminal(_) => (VfsRoute::Terminal, fd),
         // Every other handle is served by vfsd, addressed by the raw descriptor.
         VfsFileHandle::Fat32(_)
+        | VfsFileHandle::Fat32ReadOnly(_)
         | VfsFileHandle::DirectRead(_)
         | VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
@@ -1051,9 +1052,10 @@ pub fn vfs_poll(fd: c_int, events: c_short) -> Result<c_short, Fat32Error> {
         let guard = file.lock();
         match &guard.handle {
             VfsFileHandle::Console(handle) => (handle.stream(), handle.terminal().clone()),
-            VfsFileHandle::Fat32(_) | VfsFileHandle::DirectRead(_) | VfsFileHandle::HostFs(_) => {
-                return Ok(events & (READ_EVENTS | WRITE_EVENTS))
-            },
+            VfsFileHandle::Fat32(_)
+            | VfsFileHandle::Fat32ReadOnly(_)
+            | VfsFileHandle::DirectRead(_)
+            | VfsFileHandle::HostFs(_) => return Ok(events & (READ_EVENTS | WRITE_EVENTS)),
             VfsFileHandle::Null(handle) => return Ok(handle.poll(events)),
             VfsFileHandle::Terminal(handle) => {
                 let mut ready: c_short = 0;
@@ -1120,6 +1122,7 @@ fn description_access(entry: &VfsEntry) -> (bool, bool) {
         VfsFileHandle::Terminal(handle) => (handle.readable(), handle.writable()),
         VfsFileHandle::Socket(_) => (true, true),
         VfsFileHandle::Fat32(_)
+        | VfsFileHandle::Fat32ReadOnly(_)
         | VfsFileHandle::DirectRead(_)
         | VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
@@ -1352,6 +1355,9 @@ pub fn vfs_read(fd: c_int, buf: &mut [u8]) -> Result<c_size_t, Fat32Error> {
 ///
 /// Uses the virtual position tracker. If the position is past EOF, extends
 /// the file with zeros first, then writes and advances the virtual position.
+///
+/// A handle that can only read, such as the one of a file of a read-only mount, fails with
+/// [`Fat32Error::ReadOnly`] right away, whatever the position is, since there is nothing to extend.
 pub fn vfs_write(fd: c_int, buf: &[u8]) -> Result<c_size_t, Fat32Error> {
     let file: OpenFile = entry_arc(fd)?;
     let mut guard = file.lock();
@@ -1359,6 +1365,11 @@ pub fn vfs_write(fd: c_int, buf: &[u8]) -> Result<c_size_t, Fat32Error> {
 
     if let VfsFileHandle::Null(handle) = &entry.handle {
         return handle.write(buf).map(|count| count as c_size_t);
+    }
+
+    // A handle that can only read has no gap to fill, and nothing to write.
+    if entry.handle.is_read_only() {
+        return Err(Fat32Error::ReadOnly);
     }
 
     let size: u64 = entry.handle.size()?;
@@ -1599,7 +1610,9 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
                 buf.update_from_vfs(&info);
             }
         },
-        handle @ (VfsFileHandle::Fat32(_) | VfsFileHandle::DirectRead(_)) => {
+        handle @ (VfsFileHandle::Fat32(_)
+        | VfsFileHandle::Fat32ReadOnly(_)
+        | VfsFileHandle::DirectRead(_)) => {
             // upstream exposes timestamps through directory entries, not open
             // files. Re-querying by path can identify a different file after
             // rename or unlink, so retain the epoch
@@ -1997,7 +2010,7 @@ pub fn vfs_ftruncate(fd: c_int, length: off_t) -> Result<(), Fat32Error> {
                 Ok(())
             }
         },
-        VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
+        VfsFileHandle::Fat32ReadOnly(_) | VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
         VfsFileHandle::Null(_) | VfsFileHandle::Terminal(_) => Err(Fat32Error::InvalidArgument),
         VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
@@ -2044,6 +2057,16 @@ pub fn vfs_fallocate(fd: c_int, offset: off_t, len: off_t) -> Result<(), Fat32Er
             let _ = file.seek(file_seek::SEEK_SET, saved as off_t);
             Ok(())
         },
+        // The size of a file that can only read never changes, so the request can only hold if the
+        // file is already large enough.
+        VfsFileHandle::Fat32ReadOnly(file) => {
+            let target_size: u64 = (offset + len) as u64;
+            if file.size()? >= target_size {
+                Ok(())
+            } else {
+                Err(Fat32Error::ReadOnly)
+            }
+        },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
         VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
@@ -2065,7 +2088,8 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => file.flush(),
         VfsFileHandle::Null(_) | VfsFileHandle::Terminal(_) => Err(Fat32Error::InvalidArgument),
-        VfsFileHandle::DirectRead(_)
+        VfsFileHandle::Fat32ReadOnly(_)
+        | VfsFileHandle::DirectRead(_)
         | VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
         | VfsFileHandle::Pipe(_)
@@ -2248,6 +2272,9 @@ pub fn vfs_pread(fd: c_int, buf: &mut [u8], offset: off_t) -> Result<c_size_t, F
 /// Writes to a VFS file descriptor at a given offset without changing position.
 ///
 /// POSIX semantics: writing past EOF extends the file with zeros up to the offset.
+///
+/// A handle that can only read fails with [`Fat32Error::ReadOnly`] right away, as [`vfs_write`]
+/// does.
 pub fn vfs_pwrite(fd: c_int, buf: &[u8], offset: off_t) -> Result<c_size_t, Fat32Error> {
     if offset < 0 {
         return Err(Fat32Error::InvalidArgument);
@@ -2258,6 +2285,11 @@ pub fn vfs_pwrite(fd: c_int, buf: &[u8], offset: off_t) -> Result<c_size_t, Fat3
 
     if let VfsFileHandle::Null(handle) = &entry.handle {
         return handle.write(buf).map(|count| count as c_size_t);
+    }
+
+    // A handle that can only read has no gap to fill, and nothing to write.
+    if entry.handle.is_read_only() {
+        return Err(Fat32Error::ReadOnly);
     }
 
     // Save current handle position.

@@ -395,6 +395,257 @@ fn open_files_are_counted_only_on_removable_mounts() {
     forget_processes(&[pid]);
 }
 
+/// Size of a cluster of the FAT images that the tests format.
+const CLUSTER_SIZE: usize = 2048;
+
+/// Returns the contents of the file `fragmented.bin` of the images of [`leak_image_with_files()`].
+fn fragmented_contents() -> Vec<u8> {
+    (0..2 * CLUSTER_SIZE + 7).map(|i| (i % 251) as u8).collect()
+}
+
+/// Writes all of `data` to a FAT file, looping on short writes.
+fn write_fat_file(file: &mut ::fat32::FatFile<'_>, data: &[u8]) {
+    let mut written: usize = 0;
+    while written < data.len() {
+        let n: usize = file.write(&data[written..]).expect("write file");
+        assert!(n > 0, "write should make progress");
+        written += n;
+    }
+}
+
+/// Formats a FAT image that holds the files that the read-only handle tests open, and leaks it.
+///
+/// Besides `data.txt`, see [`leak_image_with_data_file()`], the image holds the empty file
+/// `empty.txt`, and the file `fragmented.bin`, whose clusters are not adjacent. Neither of them can
+/// be read in place.
+fn leak_image_with_files() -> (*mut u8, usize) {
+    let (ptr, size): (*mut u8, usize) = leak_image_with_data_file();
+
+    // Dropping the filesystem flushes it to the image.
+    let fat: ::fat32::Fat = unsafe { ::fat32::Fat::from_memory(ptr, size).expect("valid fat") };
+    let path = |name: &str| ::fat32::FatResolvedPath::new(String::from(name)).expect("valid path");
+    fat.create_new(&path("empty.txt"), false, true)
+        .expect("create empty file");
+    let mut fragmented = fat
+        .create_new(&path("fragmented.bin"), false, true)
+        .expect("create fragmented file");
+    let mut other = fat
+        .create_new(&path("other.bin"), false, true)
+        .expect("create other file");
+
+    // Interleave the clusters of two files, so that the first one is not contiguous.
+    let data: Vec<u8> = fragmented_contents();
+    write_fat_file(&mut fragmented, &data[..CLUSTER_SIZE]);
+    write_fat_file(&mut other, b"interleaved");
+    write_fat_file(&mut fragmented, &data[CLUSTER_SIZE..]);
+    (ptr, size)
+}
+
+/// Mounts the image of [`leak_image_with_files()`] as a permanent mount.
+fn mount_image_with_files(mount: &str, readonly: bool) {
+    let (ptr, size): (*mut u8, usize) = leak_image_with_files();
+    // SAFETY: The image is leaked, and nothing else uses it.
+    unsafe { crate::state::mount_image(mount, ptr, size, readonly) }.expect("mount image");
+}
+
+/// Resolves an absolute path, for the tests that open a file without a descriptor.
+fn resolve(path: &str) -> filesystem::VfsResolvedPath {
+    filesystem::VfsResolvedPath::new(
+        AnchoredPath::new(AT_FDCWD, String::from(path)).expect("anchor path"),
+    )
+    .expect("resolve path")
+}
+
+/// Returns the name of the kind of handle that a descriptor holds.
+fn handle_kind(fd: c_int) -> &'static str {
+    let file: OpenFile = entry_arc(fd).expect("the slot should exist");
+    let guard = file.lock();
+    match &guard.handle {
+        VfsFileHandle::Fat32(_) => "Fat32",
+        VfsFileHandle::Fat32ReadOnly(_) => "Fat32ReadOnly",
+        VfsFileHandle::DirectRead(_) => "DirectRead",
+        _ => "other",
+    }
+}
+
+/// Tests that a file is opened without a handle that can write, and without being counted as open,
+/// if it is a file of a permanent mount of a read-only filesystem, and only then.
+#[test]
+fn open_readonly_serves_only_permanent_read_only_mounts() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7421);
+    set_current_process(pid);
+    let read_only: &str = "/readonly-open-ro";
+    mount_image_with_files(read_only, true);
+    mount_image_with_files("/readonly-open-rw", false);
+    crate::state::create_mount("/readonly-open-removable", crate::state::MIN_FAT_SIZE)
+        .expect("create mount");
+    let create_flags: c_int = file_access_mode::O_RDWR | file_creation_flags::O_CREAT;
+    let fd: c_int = vfs_open("/readonly-open-removable/file", create_flags).expect("create file");
+    vfs_close(fd).expect("close file");
+
+    // Whatever the file holds, it is served, and it is not counted as open.
+    let open = |path: &str| filesystem::open_readonly(&resolve(path));
+    let mut data: filesystem::ReadOnlyFile =
+        open("/readonly-open-ro/data.txt").expect("open data file");
+    let mut empty: filesystem::ReadOnlyFile =
+        open("/readonly-open-ro/empty.txt").expect("open empty file");
+    let mut fragmented: filesystem::ReadOnlyFile =
+        open("/readonly-open-ro/fragmented.bin").expect("open fragmented file");
+    assert_eq!(crate::state::open_file_count(read_only), 0);
+
+    let contents: Vec<u8> = fragmented_contents();
+    assert_eq!(data.size(), Ok(9));
+    assert_eq!(empty.size(), Ok(0));
+    assert_eq!(fragmented.size(), Ok(contents.len() as u64));
+    let mut buf: [u8; 16] = [0; 16];
+    assert_eq!(data.read(&mut buf), Ok(9));
+    assert_eq!(&buf[..9], b"permanent");
+    assert_eq!(empty.read(&mut buf), Ok(0));
+    assert_eq!(fragmented.seek(file_seek::SEEK_SET, 100), Ok(100));
+    assert_eq!(fragmented.read(&mut buf), Ok(16));
+    assert_eq!(buf[..], contents[100..116]);
+
+    // As the handle of a descriptor, it cannot write, and it seeks as the file does.
+    let mut handle: VfsFileHandle = VfsFileHandle::Fat32ReadOnly(data);
+    assert!(handle.is_read_only());
+    assert_eq!(handle.write(b"x"), Err(Fat32Error::ReadOnly));
+    assert_eq!(handle.seek(100, file_seek::SEEK_SET), Ok(9), "a seek past the end stops there");
+    assert_eq!(handle.read(&mut buf), Ok(0));
+    assert_eq!(handle.seek(-1, file_seek::SEEK_SET), Err(Fat32Error::InvalidArgument));
+    assert_eq!(handle.seek(0, 99), Err(Fat32Error::InvalidArgument));
+    assert_eq!(handle.size(), Ok(9));
+
+    // No other path is served: it is not a file, or its mount is not a permanent read-only one.
+    for path in [
+        "/readonly-open-ro/missing.txt",
+        "/readonly-open-ro",
+        "/readonly-open-rw/data.txt",
+        "/readonly-open-removable/file",
+        "/dev/null",
+    ] {
+        assert!(open(path).is_none(), "{path} must not be served");
+    }
+    forget_processes(&[pid]);
+}
+
+/// Tests that a file that is opened only for reading gets a handle that cannot write, and that is
+/// not counted as open, only if it is a file of a permanent mount of a read-only filesystem that
+/// cannot be read in place. Every other file gets the handle that it got before.
+#[test]
+fn read_only_opens_pick_the_handle_by_mount() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7422);
+    set_current_process(pid);
+    mount_image_with_files("/pick-ro", true);
+    mount_image_with_files("/pick-rw", false);
+    crate::state::create_mount("/pick-removable", crate::state::MIN_FAT_SIZE)
+        .expect("create mount");
+    let create_flags: c_int = file_access_mode::O_RDWR | file_creation_flags::O_CREAT;
+    let fd: c_int = vfs_open("/pick-removable/empty.txt", create_flags).expect("create file");
+    vfs_close(fd).expect("close file");
+    assert!(
+        crate::file::file_raw_region("/pick-ro/fragmented.bin").is_none(),
+        "file should not be contiguous"
+    );
+
+    let cases: [(&str, &str); 7] = [
+        ("/pick-ro/data.txt", "DirectRead"),
+        ("/pick-ro/empty.txt", "Fat32ReadOnly"),
+        ("/pick-ro/fragmented.bin", "Fat32ReadOnly"),
+        ("/pick-rw/data.txt", "DirectRead"),
+        ("/pick-rw/empty.txt", "Fat32"),
+        ("/pick-rw/fragmented.bin", "Fat32"),
+        ("/pick-removable/empty.txt", "Fat32"),
+    ];
+    for (path, kind) in cases {
+        let fd: c_int = vfs_open(path, file_access_mode::O_RDONLY).expect("open file");
+        assert_eq!(handle_kind(fd), kind, "{path}");
+        vfs_close(fd).expect("close file");
+    }
+
+    // A flag that creates or truncates the file is not met by a handle that cannot write.
+    assert_eq!(
+        vfs_open("/pick-ro/empty.txt", file_access_mode::O_RDONLY | file_creation_flags::O_CREAT),
+        Err(Fat32Error::ReadOnly)
+    );
+    assert_eq!(
+        vfs_open("/pick-ro/empty.txt", file_access_mode::O_RDONLY | file_creation_flags::O_TRUNC),
+        Err(Fat32Error::InvalidArgument)
+    );
+    forget_processes(&[pid]);
+}
+
+/// Tests that a descriptor with a handle that can only read reads, seeks, and reports the size of
+/// its file as any other descriptor does, and that nothing that would change the file succeeds,
+/// wherever it would write.
+#[test]
+fn read_only_handle_reads_and_rejects_writes() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7423);
+    set_current_process(pid);
+    let mount: &str = "/readonly-io";
+    mount_image_with_files(mount, true);
+    let data: Vec<u8> = fragmented_contents();
+    let len: off_t = data.len() as off_t;
+
+    let fd: c_int =
+        vfs_open("/readonly-io/fragmented.bin", file_access_mode::O_RDONLY).expect("open file");
+    assert_eq!(handle_kind(fd), "Fat32ReadOnly");
+    assert_eq!(read_to_end(fd), data, "reads should return the file contents in order");
+    let mut buf: [u8; 16] = [0; 16];
+    assert_eq!(vfs_read(fd, &mut buf), Ok(0), "read at the end should return 0");
+    assert_eq!(vfs_lseek(fd, 100, file_seek::SEEK_SET), Ok(100));
+    assert_eq!(vfs_read(fd, &mut buf), Ok(16));
+    assert_eq!(buf[..], data[100..116]);
+    assert_eq!(vfs_lseek(fd, -16, file_seek::SEEK_CUR), Ok(100));
+    assert_eq!(vfs_pread(fd, &mut buf, CLUSTER_SIZE as off_t), Ok(16));
+    assert_eq!(buf[..], data[CLUSTER_SIZE..CLUSTER_SIZE + 16]);
+    assert_eq!(vfs_lseek(fd, -1, file_seek::SEEK_SET), Err(Fat32Error::InvalidSeek));
+    assert_eq!(vfs_lseek(fd, 0, 99), Err(Fat32Error::InvalidArgument));
+    let mut metadata: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+    vfs_fstat(fd, &mut metadata).expect("fstat file");
+    assert_eq!(metadata.st_size, len, "fstat should report the file size");
+    assert_eq!(vfs_poll(fd, POLLIN), Ok(POLLIN));
+    assert_eq!(vfs_resolve(fd), Some((VfsRoute::Vfs, fd)));
+
+    // Nothing that would change the file succeeds, even if it starts past the end of the file.
+    for pos in [0, 100, len + 10] {
+        assert_eq!(vfs_lseek(fd, pos, file_seek::SEEK_SET), Ok(pos));
+        assert_eq!(vfs_write(fd, b"x"), Err(Fat32Error::ReadOnly), "write at {pos}");
+        assert_eq!(vfs_pwrite(fd, b"x", pos), Err(Fat32Error::ReadOnly), "pwrite at {pos}");
+    }
+    assert_eq!(vfs_ftruncate(fd, 0), Err(Fat32Error::ReadOnly));
+    assert_eq!(vfs_ftruncate(fd, len + 100), Err(Fat32Error::ReadOnly));
+    assert_eq!(vfs_fallocate(fd, 0, len), Ok(()), "the file already is large enough");
+    assert_eq!(vfs_fallocate(fd, 0, len + 1), Err(Fat32Error::ReadOnly));
+    assert_eq!(vfs_fsync(fd), Ok(()));
+
+    // The file is as it was, and was not counted as open.
+    assert_eq!(vfs_lseek(fd, 0, file_seek::SEEK_SET), Ok(0));
+    assert_eq!(read_to_end(fd), data, "the file should be unchanged");
+    assert_eq!(crate::state::open_file_count(mount), 0);
+    vfs_close(fd).expect("close file");
+
+    // A file that is read in place has no way of writing either, wherever it would write.
+    let fd: c_int =
+        vfs_open("/readonly-io/data.txt", file_access_mode::O_RDONLY).expect("open data file");
+    assert_eq!(handle_kind(fd), "DirectRead");
+    assert_eq!(vfs_write(fd, b"x"), Err(Fat32Error::ReadOnly));
+    assert_eq!(vfs_pwrite(fd, b"x", 1000), Err(Fat32Error::ReadOnly));
+    vfs_close(fd).expect("close data file");
+    forget_processes(&[pid]);
+}
+
 /// Hostfs cwd bookkeeping preserves spelling; local chdir retains its normalization policy.
 #[test]
 fn hostfs_cwd_preserves_path_spelling() {

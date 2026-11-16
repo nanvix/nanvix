@@ -17,7 +17,10 @@ use super::{
     TerminalHandle,
 };
 use crate::{
-    filesystem::File,
+    filesystem::{
+        File,
+        ReadOnlyFile,
+    },
     pipe::PipeEnd,
     state,
 };
@@ -39,6 +42,9 @@ use ::sysapi::{
 pub enum VfsFileHandle {
     /// File opened through the FAT32 backend.
     Fat32(File),
+    /// File opened for reading from a permanent mount of a read-only FAT32 filesystem. It cannot be
+    /// written, and it is not counted as an open file.
+    Fat32ReadOnly(ReadOnlyFile),
     /// Zero-copy direct memory read (contiguous file optimization).
     DirectRead(DirectReadHandle),
     /// Open directory handle for `readdir()`/`getdents()` operations.
@@ -67,6 +73,7 @@ impl VfsFileHandle {
     pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Fat32Error> {
         match self {
             VfsFileHandle::Fat32(file) => file.read(buf),
+            VfsFileHandle::Fat32ReadOnly(file) => file.read(buf),
             VfsFileHandle::DirectRead(handle) => state::with_storage_lock(|| Ok(handle.read(buf))),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
@@ -82,7 +89,9 @@ impl VfsFileHandle {
     pub fn write(&mut self, buf: &[u8]) -> Result<usize, Fat32Error> {
         match self {
             VfsFileHandle::Fat32(file) => file.write(buf),
-            VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
+            VfsFileHandle::Fat32ReadOnly(_) | VfsFileHandle::DirectRead(_) => {
+                Err(Fat32Error::ReadOnly)
+            },
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::Null(handle) => handle.write(buf),
@@ -97,6 +106,10 @@ impl VfsFileHandle {
     pub fn seek(&mut self, offset: off_t, whence: c_int) -> Result<off_t, Fat32Error> {
         match self {
             VfsFileHandle::Fat32(file) => {
+                let pos: u64 = file.seek(whence, offset)?;
+                Ok(pos as off_t)
+            },
+            VfsFileHandle::Fat32ReadOnly(file) => {
                 let pos: u64 = file.seek(whence, offset)?;
                 Ok(pos as off_t)
             },
@@ -115,6 +128,7 @@ impl VfsFileHandle {
     pub fn size(&mut self) -> Result<u64, Fat32Error> {
         match self {
             VfsFileHandle::Fat32(file) => file.size(),
+            VfsFileHandle::Fat32ReadOnly(file) => file.size(),
             VfsFileHandle::DirectRead(handle) => Ok(handle.size() as u64),
             VfsFileHandle::Directory(_) => Ok(0),
             VfsFileHandle::HostFs(_) => Ok(0),
@@ -133,6 +147,16 @@ impl VfsFileHandle {
             VfsFileHandle::HostFs(handle) => handle.is_dir(),
             _ => false,
         }
+    }
+
+    /// Returns whether this handle can only read.
+    ///
+    /// Such a handle fails every write with [`Fat32Error::ReadOnly`], whatever the access mode of
+    /// the descriptor that holds it, so a caller that is about to write may fail right away. A
+    /// [`VfsFileHandle::Fat32`] handle is not one, even if it was opened for reading only: it
+    /// checks its own access mode when it is written.
+    pub fn is_read_only(&self) -> bool {
+        matches!(self, VfsFileHandle::Fat32ReadOnly(_) | VfsFileHandle::DirectRead(_))
     }
 
     /// Returns whether this handle is backed by the host filesystem.
