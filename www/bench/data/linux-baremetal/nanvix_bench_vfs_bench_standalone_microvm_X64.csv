@@ -5268,3 +5268,17 @@ dc1b72acca24db7b5a33de68b3a9dae126dda7ce,Read-only mount,seq_read,100,73,150,109
 3b2f973831f4ebf5aefcc12a8d9b25cedd0d2c84,Read-only mount,open+close,100,226,259,1092
 3b2f973831f4ebf5aefcc12a8d9b25cedd0d2c84,Read-only mount,readdir,100,435,586,1220
 3b2f973831f4ebf5aefcc12a8d9b25cedd0d2c84,Read-only mount,seq_read,100,78,145,10909
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Writable mount,protocol,100,201,220,228
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Writable mount,stat,100,142,169,178
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Writable mount,open+close,100,234,259,1089
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Writable mount,readdir,100,446,619,1240
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Writable mount,create+close+unlink,100,232,245,255
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Writable mount,mkdir+rmdir,100,229,256,1712
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Writable mount,seq_read,100,76,157,10908
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Writable mount,rename,100,161,180,184
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Writable mount,write+flush,100,77,95,1422
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Read-only mount,protocol,100,200,211,219
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Read-only mount,stat,100,137,168,175
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Read-only mount,open+close,100,226,254,1106
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Read-only mount,readdir,100,437,608,1189
+7b3b6f646a6fd8f424b5f3ca5bf532bb99b242ac,Read-only mount,seq_read,100,74,141,10901
