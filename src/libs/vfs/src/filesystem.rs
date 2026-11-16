@@ -5,6 +5,7 @@
 //!
 //! This module provides:
 //! - [`File`]: A unified file handle for FAT filesystem files.
+//! - [`ReadOnlyFile`]: A read-only file handle for the files of permanent read-only mounts.
 //! - Free functions that consume anchored paths for local VFS operations.
 
 //==================================================================================================
@@ -21,7 +22,10 @@ mod stat;
 
 pub use self::{
     dir_entry::DirEntry,
-    handle::File,
+    handle::{
+        File,
+        ReadOnlyFile,
+    },
     stat::Stat,
 };
 
@@ -46,6 +50,7 @@ use ::fat32::{
     Fat32Error,
     FatFile,
     FatResolvedPath,
+    ReadOnlyFatFile,
     FAT_EPOCH_SECS,
 };
 
@@ -178,6 +183,57 @@ pub(crate) fn file_raw_region(path: &VfsResolvedPath) -> Option<(*const u8, usiz
             .ok_or(Fat32Error::NotFound)
     })
     .ok()
+}
+
+/// Opens a file of a permanent mount for reading, without counting it as open.
+///
+/// This is the cheaper counterpart of [`open()`] for a file that is only read: the handle has no
+/// write path, its reads do not check what it was opened for, and the mount that it is opened from
+/// does not count it as open, so opening and closing it take no lock of the open-file counts. It is
+/// sound because a permanent mount is never removed, see
+/// [`Mount::into_permanent()`](crate::mount::Mount::into_permanent), so nothing needs to be told
+/// that the file is open in order to keep the filesystem alive.
+///
+/// Only a permanent mount of a read-only filesystem can serve the file, see
+/// [`Fat::open_readonly()`](::fat32::Fat::open_readonly). It reports no errors: it returns `None`
+/// for a path that it cannot serve, whatever the reason is, and the caller falls back to [`open()`],
+/// which reports the error that the path deserves. It is therefore only meant for opens that
+/// neither write nor create, nor truncate.
+///
+/// # Parameters
+///
+/// - `path`: The path to the file.
+///
+/// # Returns
+///
+/// A handle to the file, or `None` if the path is not an existing file of a permanent mount of a
+/// read-only filesystem.
+pub(crate) fn open_readonly(path: &VfsResolvedPath) -> Option<ReadOnlyFile> {
+    if path.device().is_some() {
+        return None;
+    }
+    let fat_path: &FatPath = path.fat().ok()?;
+    state::with_vfs_mut(|vfs| {
+        let mount: &mut crate::mount::Mount = vfs
+            .get_mount_mut(fat_path.mount_index)
+            .ok_or(Fat32Error::NotFound)?;
+        if !mount.is_permanent() {
+            return Err(Fat32Error::NotSupported);
+        }
+        let file: ReadOnlyFatFile<'_> = mount.fat().open_readonly(&fat_path.path)?;
+
+        // SAFETY: The file borrows from the FAT filesystem stored in the global VFS static, which
+        // is never dropped. The mount that the file is opened from is permanent, and
+        // `Vfs::remove_mount()` rejects the removal of a permanent mount, so the filesystem
+        // outlives the file even though nothing counts the file as open. The VFS lock is held
+        // while the file is created.
+        //
+        // IMPORTANT: Any change that allows a permanent mount to be removed must count the files
+        // that are opened here; otherwise this is unsound. See also `open()`.
+        Ok(unsafe { core::mem::transmute::<ReadOnlyFatFile<'_>, ReadOnlyFatFile<'static>>(file) })
+    })
+    .ok()
+    .map(ReadOnlyFile::new)
 }
 
 /// Gets file metadata without opening the file.

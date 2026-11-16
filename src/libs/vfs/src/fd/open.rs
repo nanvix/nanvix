@@ -5,7 +5,8 @@
 //!
 //! This module translates POSIX open flags into `fat32::OpenOptions` (via the
 //! VFS high-level API) and produces [`VfsFileHandle`] variants for the FD
-//! table. It also provides zero-copy direct-read handles for contiguous files.
+//! table. It also provides zero-copy direct-read handles for contiguous files,
+//! and read-only handles for the other files of permanent read-only mounts.
 
 //==================================================================================================
 // Imports
@@ -65,7 +66,8 @@ fn stat(path: AnchoredPath) -> Result<filesystem::Stat, Fat32Error> {
 ///
 /// Translates POSIX `open()` flags into VFS `OpenOptions`. For read-only
 /// opens of contiguous files, returns a zero-copy [`VfsFileHandle::DirectRead`]
-/// handle.
+/// handle. For the other read-only opens of a file of a permanent read-only
+/// mount, returns a [`VfsFileHandle::Fat32ReadOnly`] handle.
 ///
 /// # Parameters
 ///
@@ -139,6 +141,12 @@ pub fn open(path: &filesystem::VfsResolvedPath, flags: c_int) -> Result<VfsFileH
     if is_read_only && (flags & creation_flags) == 0 {
         if let Some((data_ptr, size)) = filesystem::file_raw_region(path) {
             return Ok(VfsFileHandle::DirectRead(DirectReadHandle::new(data_ptr, size)));
+        }
+
+        // A file that cannot be read in place, such as an empty or a fragmented one, still does not
+        // need a handle that can write, nor one that is counted as open, if its mount allows it.
+        if let Some(file) = filesystem::open_readonly(path) {
+            return Ok(VfsFileHandle::Fat32ReadOnly(file));
         }
     }
 

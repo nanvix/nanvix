@@ -1,7 +1,10 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! Open FAT filesystem file handle.
+//! Open FAT filesystem file handles.
+//!
+//! This module provides [`File`], which can read and write and which is counted as open, and
+//! [`ReadOnlyFile`], which can only read and which is not counted as open.
 
 //==================================================================================================
 // Imports
@@ -16,6 +19,7 @@ use ::core::mem::ManuallyDrop;
 use ::fat32::{
     Fat32Error,
     FatFile,
+    ReadOnlyFatFile,
 };
 use ::sysapi::unistd::file_seek;
 
@@ -47,6 +51,27 @@ pub struct File {
     inner: ManuallyDrop<FatFile<'static>>,
     /// The path of the mount that counts this file as open, if the mount can be unmounted.
     tracked_mount: Option<String>,
+}
+
+/// An open file handle on a permanent mount of a read-only FAT filesystem.
+///
+/// Provides POSIX-like read and seek operations. It is the counterpart of [`File`] for files that
+/// can only be read, and it differs from it in two ways:
+///
+/// - It has no write or truncate methods, so a write cannot even be attempted, and its reads do not
+///   check what the file was opened for.
+/// - It is not counted as an open file, because the mount that it is opened from is permanent and
+///   so is never unmounted.
+///
+/// # Lifetime
+///
+/// The `'static` lifetime on the inner `ReadOnlyFatFile` is safe for the same reason that it is for
+/// [`File`]: the FAT filesystem outlives the handle. A permanent mount is never removed, which is
+/// what makes counting the open files of the mount unnecessary. See
+/// [`open_readonly()`](super::open_readonly).
+pub struct ReadOnlyFile {
+    /// The underlying read-only FAT file handle.
+    inner: ManuallyDrop<ReadOnlyFatFile<'static>>,
 }
 
 //==================================================================================================
@@ -134,17 +159,7 @@ impl File {
     ///   negative for `SEEK_SET`.
     /// - [`Fat32Error::IoError`] if seeking to an invalid position.
     pub fn seek(&mut self, whence: i32, offset: i64) -> Result<u64, Fat32Error> {
-        let pos: ::fatfs::SeekFrom = match whence {
-            file_seek::SEEK_SET => {
-                if offset < 0 {
-                    return Err(Fat32Error::InvalidArgument);
-                }
-                ::fatfs::SeekFrom::Start(offset as u64)
-            },
-            file_seek::SEEK_CUR => ::fatfs::SeekFrom::Current(offset),
-            file_seek::SEEK_END => ::fatfs::SeekFrom::End(offset),
-            _ => return Err(Fat32Error::InvalidArgument),
-        };
+        let pos: ::fatfs::SeekFrom = seek_from(whence, offset)?;
         state::with_storage_lock(|| self.inner.seek(pos))
     }
 
@@ -237,5 +252,116 @@ impl Drop for File {
         if let Some(mount_path) = &self.tracked_mount {
             state::decrement_open_count(mount_path);
         }
+    }
+}
+
+impl ReadOnlyFile {
+    /// Creates a file handle.
+    ///
+    /// # Parameters
+    ///
+    /// - `inner`: The underlying read-only FAT file handle.
+    pub(super) fn new(inner: ReadOnlyFatFile<'static>) -> Self {
+        Self {
+            inner: ManuallyDrop::new(inner),
+        }
+    }
+
+    /// Reads data from the file.
+    ///
+    /// # Parameters
+    ///
+    /// - `buf`: The buffer to read data into.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes read, or 0 at EOF.
+    ///
+    /// # Errors
+    ///
+    /// - [`Fat32Error::IoError`] on read failure.
+    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Fat32Error> {
+        state::with_storage_lock(|| self.inner.read(buf))
+    }
+
+    /// Seeks to a position in the file.
+    ///
+    /// A position past the end of the file is clamped to the end of the file.
+    ///
+    /// # Parameters
+    ///
+    /// - `whence`: Seek mode (`SEEK_SET`, `SEEK_CUR`, or `SEEK_END`).
+    /// - `offset`: Offset in bytes.
+    ///
+    /// # Returns
+    ///
+    /// The new file position.
+    ///
+    /// # Errors
+    ///
+    /// - [`Fat32Error::InvalidArgument`] if `whence` is invalid or offset is negative for
+    ///   `SEEK_SET`.
+    /// - [`Fat32Error::InvalidPath`] if the target position is negative or too large for a FAT
+    ///   file.
+    /// - [`Fat32Error::IoError`] if seeking fails.
+    pub fn seek(&mut self, whence: i32, offset: i64) -> Result<u64, Fat32Error> {
+        let pos: ::fatfs::SeekFrom = seek_from(whence, offset)?;
+        state::with_storage_lock(|| self.inner.seek(pos))
+    }
+
+    /// Gets the file size in bytes.
+    ///
+    /// The first call finds the size by seeking, and later calls return the size that it found.
+    ///
+    /// # Errors
+    ///
+    /// - [`Fat32Error::IoError`] if seeking fails.
+    pub fn size(&mut self) -> Result<u64, Fat32Error> {
+        state::with_storage_lock(|| self.inner.len())
+    }
+}
+
+impl core::fmt::Debug for ReadOnlyFile {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("ReadOnlyFile").finish_non_exhaustive()
+    }
+}
+
+impl Drop for ReadOnlyFile {
+    fn drop(&mut self) {
+        state::with_storage_lock(|| {
+            // SAFETY: `inner` is wrapped in `ManuallyDrop` and is dropped exactly once here while
+            // holding the same lock that serializes every other FAT filesystem operation. The file
+            // is not counted as open, so there is nothing else to undo.
+            unsafe { ManuallyDrop::drop(&mut self.inner) };
+        });
+    }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+/// Converts the arguments of a POSIX `lseek()` into a seek position.
+///
+/// # Parameters
+///
+/// - `whence`: Seek mode (`SEEK_SET`, `SEEK_CUR`, or `SEEK_END`).
+/// - `offset`: Offset in bytes.
+///
+/// # Errors
+///
+/// - [`Fat32Error::InvalidArgument`] if `whence` is invalid or offset is negative for `SEEK_SET`.
+fn seek_from(whence: i32, offset: i64) -> Result<::fatfs::SeekFrom, Fat32Error> {
+    match whence {
+        file_seek::SEEK_SET => {
+            if offset < 0 {
+                return Err(Fat32Error::InvalidArgument);
+            }
+            Ok(::fatfs::SeekFrom::Start(offset as u64))
+        },
+        file_seek::SEEK_CUR => Ok(::fatfs::SeekFrom::Current(offset)),
+        file_seek::SEEK_END => Ok(::fatfs::SeekFrom::End(offset)),
+        _ => Err(Fat32Error::InvalidArgument),
     }
 }
