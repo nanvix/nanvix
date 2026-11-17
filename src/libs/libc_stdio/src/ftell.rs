@@ -62,5 +62,6 @@ pub unsafe extern "C" fn ftell(stream: *mut FILE) -> c_long {
         (*stream).error = 1;
         return -1;
     }
-    pos as c_long
+    // A lookahead byte has been read from the descriptor but not consumed from the stream.
+    (pos - off_t::from((*stream).ungetc_buf != crate::EOF)) as c_long
 }

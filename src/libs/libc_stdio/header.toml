@@ -230,6 +230,10 @@ functions = ["fread", "fwrite"]
 [[sections]]
 title = "Formatted I/O"
 functions = [
+    "fscanf",
+    "scanf",
+    "vfscanf",
+    "vscanf",
     "printf",
     "fprintf",
     "dprintf",

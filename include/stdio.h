@@ -174,6 +174,10 @@ extern size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
  * Formatted I/O
  *==================================================================================================*/
 
+extern int fscanf(FILE *stream, const char *fmt, ...);
+extern int scanf(const char *fmt, ...);
+extern int vfscanf(FILE *stream, const char *fmt, va_list ap);
+extern int vscanf(const char *fmt, va_list ap);
 extern int printf(const char *fmt, ...);
 extern int fprintf(FILE *stream, const char *fmt, ...);
 extern int dprintf(int fd, const char *fmt, ...);

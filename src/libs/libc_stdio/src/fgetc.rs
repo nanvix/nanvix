@@ -26,7 +26,8 @@ use ::sysapi::{
 ///
 /// Reads the next character from the given file stream and returns it as an `unsigned char` cast
 /// to [`c_int`], or `EOF` (`-1`) on end-of-file or error. If a character was pushed back via
-/// [`crate::ungetc::ungetc`], it is returned first.
+/// [`crate::ungetc::ungetc`], it is returned first. Once EOF is reached, no more input is read until
+/// the end-of-file indicator is cleared.
 ///
 /// # Parameters
 ///
@@ -49,6 +50,7 @@ use ::sysapi::{
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn fgetc(stream: *mut FILE) -> c_int {
     extern "C" {
+        #[cfg_attr(target_os = "windows", link_name = "_read")]
         fn read(fd: c_int, buf: *mut c_void, count: c_size_t) -> c_ssize_t;
     }
 
@@ -61,6 +63,10 @@ pub unsafe extern "C" fn fgetc(stream: *mut FILE) -> c_int {
         let c: c_int = (*stream).ungetc_buf;
         (*stream).ungetc_buf = -1;
         return c;
+    }
+
+    if (*stream).eof != 0 {
+        return -1;
     }
 
     let fd: c_int = (*stream).fd;
