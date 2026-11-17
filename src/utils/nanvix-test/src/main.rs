@@ -269,6 +269,19 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
     let filtered_tests: Vec<TestCaseConfig> = tests
         .into_iter()
         .filter(|test_config| test_config.matches_filter(test_glob_filter.as_ref()))
+        .filter(|test_config| {
+            let host: &str = ::std::env::consts::OS;
+            if test_config.should_run_on_host(host) {
+                true
+            } else {
+                info!(
+                    "main(): skipping test not applicable to host (executor={}, name={}, host={}, \
+                     hosts={:?})",
+                    test_config.executor, test_config.name, host, test_config.hosts
+                );
+                false
+            }
+        })
         .collect();
     let filtered_count: usize = filtered_tests.len();
 
@@ -479,6 +492,7 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
             extra_nanvixd_args,
             expected_exit_code,
             runs_on: _,
+            hosts: _,
             targets: _,
             build_modes: _,
             program_env,

@@ -50,10 +50,9 @@ System tests are available on `microvm` machines on Linux and Windows.
 .\z.ps1 build -- run-nanvix-tests
 ```
 
-Test configurations:
-
-- `test/test-standalone.toml` — Linux.
-- `test/test-standalone-windows.toml` — Windows.
+Linux and Windows share `test/test-standalone.toml`, including all HTTP and terminal tests.
+The runner supplies host-native defaults. Restrict genuinely host-specific tests with `hosts`
+(e.g., `hosts = ["linux"]` for Unix signals and KVM snapshot-save-exit); omit it for shared tests.
 
 The `nanvix-test` utility (`src/utils/nanvix-test/`) drives
 these tests in two execution modes:

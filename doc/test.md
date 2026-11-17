@@ -53,8 +53,16 @@ The system integration tests can be run directly using:
 .\z.ps1 build -- run-nanvix-tests
 ```
 
-The runner uses `test/test-standalone.toml` on Linux and
-`test/test-standalone-windows.toml` on Windows.
+Both hosts use [test-standalone.toml](../test/test-standalone.toml), with identical HTTP and
+terminal test coverage. When omitted, the runner selects the native `nanvixd` binary
+(`./bin/nanvixd.elf` on Linux, `./bin/nanvixd.exe` on Windows), temporary directory (`/tmp` or
+`.`), and stream collection timeout (300 or 600 seconds, respectively). Explicit runner values
+still override these defaults.
+
+Tests can specify `hosts = ["linux"]` or `hosts = ["windows"]`; omitting `hosts` runs the test
+on both. Host filtering happens before listing and sharding, and skipped entries are logged.
+Empty lists and unknown host names are errors. Only the Unix signal tests and the KVM-specific
+snapshot-save-exit test are Linux-only; HTTP and terminal tests have no host restrictions.
 
 The POSIX C suites use `test/test-posix.toml` and `test/test-posix-windows.toml`.
 The `posix/test-c-stdio` suite covers formatted input from files, redirected standard input,

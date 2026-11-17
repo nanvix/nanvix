@@ -1,8 +1,11 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# Shared Linux/KVM and Windows/WHP coverage. The runner supplies host-native daemon,
+# temporary-directory, and stream-timeout defaults.
 [runner]
-nanvixd_binary_path = "./bin/nanvixd.elf"
 working_directory = "."
 log_directory = "logs"
-tmp_directory = "/tmp"
 ipv4_addr = "127.0.0.1"
 port_num = 9999
 fatal = true
@@ -13,7 +16,6 @@ nanvixd_shutdown_retry_interval_ms = 100
 nanvixd_ready_attempts_max = 50
 nanvixd_ready_retry_interval_ms = 100
 cleanup_uservm_sleep_duration_ms = 10
-stream_collection_timeout_ms = 300000
 gateway_connect_max_attempts = 100
 gateway_connect_initial_backoff_ms = 10
 gateway_connect_max_backoff_ms = 500
@@ -183,6 +185,7 @@ expected_output = "ok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "signal"
+hosts = ["linux"]
 name = "signal/SIGINT"
 program = "./bin/echo-rust-nostd.initrd"
 input = "hello world!\n"
@@ -192,6 +195,7 @@ signal = "SIGINT"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "signal"
+hosts = ["linux"]
 name = "signal/SIGTERM"
 program = "./bin/echo-rust-nostd.initrd"
 input = "hello world!\n"
@@ -201,6 +205,7 @@ signal = "SIGTERM"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "signal"
+hosts = ["linux"]
 name = "signal/SIGHUP"
 program = "./bin/echo-rust-nostd.initrd"
 input = "hello world!\n"
@@ -210,6 +215,7 @@ signal = "SIGHUP"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "signal"
+hosts = ["linux"]
 name = "signal/SIGQUIT"
 program = "./bin/echo-rust-nostd.initrd"
 input = "hello world!\n"
@@ -219,6 +225,7 @@ signal = "SIGQUIT"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "signal"
+hosts = ["linux"]
 name = "signal/SIGTERM-kill-in-flight"
 program = "./bin/echo-rust-nostd.initrd"
 input = "hello world!\n"
@@ -410,7 +417,7 @@ expected_output = "ok"
 build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-mount-test.initrd"
-extra_nanvixd_args = "-mount ./bin/mount-test-data"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/mount-test-data"
 expected_output = "ok"
 expected_exit_code = 0
 runs_on = ["microvm"]
@@ -419,7 +426,7 @@ runs_on = ["microvm"]
 build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-fork-hostfs.initrd"
-extra_nanvixd_args = "-mount ./bin/test-fork-hostfs-data"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/test-fork-hostfs-data"
 expect_empty_output = true
 expected_exit_code = 13
 runs_on = ["microvm"]
@@ -428,6 +435,7 @@ runs_on = ["microvm"]
 build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-mount-multipart-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
 expected_exit_code = 0
 runs_on = ["microvm"]
@@ -782,9 +790,11 @@ expected_exit_code = 32
 # Asserts that the host nanvixd process exits on its own after the snapshot artifacts are
 # written to disk. The guest workload spins forever after taking the snapshot, so the only
 # path to a clean nanvixd exit is the host-side snapshot-completion tear-down.
+# This executor checks KVM-specific snapshot artifacts.
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "snapshot-save-exit"
+hosts = ["linux"]
 program = "./bin/test-rust-snapshot-test.elf"
 iterations = 1
 expected_exit_code = 0

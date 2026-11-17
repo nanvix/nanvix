@@ -87,6 +87,7 @@ fn validate_accepts_expected_exit_code() -> Result<()> {
         extra_nanvixd_args: None,
         expected_exit_code: Some(0),
         runs_on: None,
+        hosts: None,
         targets: None,
         build_modes: vec!["debug".to_string()],
         program_env: None,
@@ -112,6 +113,7 @@ fn validate_accepts_absent_expected_exit_code() -> Result<()> {
         extra_nanvixd_args: None,
         expected_exit_code: None,
         runs_on: None,
+        hosts: None,
         targets: None,
         build_modes: vec!["debug".to_string()],
         program_env: None,
@@ -205,6 +207,7 @@ fn validate_rejects_both_program_args_and_padding_len() {
         extra_nanvixd_args: None,
         expected_exit_code: None,
         runs_on: None,
+        hosts: None,
         targets: None,
         build_modes: vec!["debug".to_string()],
         program_env: None,
@@ -233,6 +236,7 @@ fn config_with_build_modes(build_modes: Vec<String>) -> TestCaseConfig {
         extra_nanvixd_args: None,
         expected_exit_code: None,
         runs_on: None,
+        hosts: None,
         targets: None,
         build_modes,
         program_env: None,
@@ -293,6 +297,107 @@ fn from_table_requires_build_modes() {
     table.insert("iterations".to_string(), Value::Integer(1));
     let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
     assert!(result.is_err(), "from_table() must reject a test entry missing 'build_modes'");
+}
+
+#[test]
+fn runner_uses_host_defaults_and_preserves_overrides() -> Result<()> {
+    let mut table: Table = ::toml::from_str(
+        r#"
+        working_directory = "."
+        log_directory = "logs"
+        ipv4_addr = "127.0.0.1"
+        port_num = 9999
+        toolchain_path = "toolchain"
+        sysroot_path = "./sysroot"
+        "#,
+    )?;
+    let runner: RunnerConfig = RunnerConfig::from_table(&table)?;
+    let (binary, tmp, timeout): (&str, &str, u64) = if cfg!(windows) {
+        ("./bin/nanvixd.exe", ".", 600_000)
+    } else {
+        ("./bin/nanvixd.elf", "/tmp", 300_000)
+    };
+    assert_eq!(runner.nanvixd_binary_path, binary);
+    assert_eq!(runner.tmp_directory, tmp);
+    assert_eq!(runner.stream_collection_timeout_ms, timeout);
+
+    table.insert("nanvixd_binary_path".to_string(), Value::String("./custom-daemon".to_string()));
+    table.insert("tmp_directory".to_string(), Value::String("./custom-tmp".to_string()));
+    table.insert("stream_collection_timeout_ms".to_string(), Value::Integer(1234));
+    let runner: RunnerConfig = RunnerConfig::from_table(&table)?;
+    assert_eq!(runner.nanvixd_binary_path, "./custom-daemon");
+    assert_eq!(runner.tmp_directory, "./custom-tmp");
+    assert_eq!(runner.stream_collection_timeout_ms, 1234);
+
+    table.insert("nanvixd_binary_path".to_string(), Value::Integer(1));
+    assert!(RunnerConfig::from_table(&table).is_err(), "invalid overrides must not use defaults");
+    Ok(())
+}
+
+#[test]
+fn hosts_filter_defaults_to_all_and_selects_listed_hosts() -> Result<()> {
+    let mut table: Table = build_test_table("empty", None);
+    let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+    for host in TestCaseConfig::KNOWN_HOSTS {
+        assert!(config.should_run_on_host(host), "absent hosts must include {host}");
+    }
+    for hosts in [vec!["linux"], vec!["windows"], vec!["linux", "windows"]] {
+        table.insert(
+            "hosts".to_string(),
+            Value::Array(
+                hosts
+                    .iter()
+                    .map(|host| Value::String((*host).to_string()))
+                    .collect(),
+            ),
+        );
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        config.validate(0)?;
+        for host in TestCaseConfig::KNOWN_HOSTS {
+            assert_eq!(config.should_run_on_host(host), hosts.contains(&host));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn hosts_filter_rejects_empty_unknown_and_malformed_lists() {
+    for hosts in [
+        Value::Array(vec![]),
+        Value::Array(vec![Value::String("Windows".to_string())]),
+        Value::Array(vec![Value::Integer(1)]),
+        Value::String("linux".to_string()),
+    ] {
+        let mut table: Table = build_test_table("empty", None);
+        table.insert("hosts".to_string(), hosts);
+        let result: Result<()> =
+            TestCaseConfig::from_table(&table, 0).and_then(|config| config.validate(0));
+        assert!(result.is_err(), "invalid host filters must not silently disable tests");
+    }
+}
+
+#[test]
+fn shared_standalone_config_preserves_http_and_terminal_parity() -> Result<()> {
+    let value: Value = ::toml::from_str(include_str!("../../../../../test/test-standalone.toml"))?;
+    let config: NanvixTestConfig = NanvixTestConfig::from_toml_value(value)?;
+    for (index, test) in config.tests.iter().enumerate() {
+        test.validate(index)?;
+        assert!(test.should_run_on_host("linux"), "Linux coverage must be preserved");
+        match test.executor.as_str() {
+            "http" | "terminal" => {
+                assert!(test.should_run_on_host("windows"), "{} must run on Windows", test.name);
+            },
+            "signal" | "snapshot-save-exit" => {
+                assert!(
+                    !test.should_run_on_host("windows"),
+                    "{} requires Unix signals or KVM snapshot artifacts",
+                    test.name
+                );
+            },
+            _ => {},
+        }
+    }
+    Ok(())
 }
 
 /// Builds a minimal test case configuration with the given executor and `signal` field.

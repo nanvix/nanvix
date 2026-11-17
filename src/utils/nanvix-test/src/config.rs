@@ -72,13 +72,18 @@ const DEFAULT_CLEANUP_USERVM_SLEEP_DURATION_MS: u64 = 10;
 // -------------------------------------------------------------------------------------------------
 // Stream Collection Configuration
 // -------------------------------------------------------------------------------------------------
-// Maximum time allowed for collecting stdout/stderr from interactive workloads. Set to 5 minutes
-// to accommodate long-running tests (stress tests, interpreter benchmarks like QuickJS test
-// suites) that may produce output over extended periods.
+// Maximum time allowed for collecting stdout/stderr from interactive workloads. Allow 5 minutes
+// on Unix and 10 minutes on Windows for long-running tests (stress tests, interpreter benchmarks
+// like QuickJS test suites) that may produce output over extended periods.
 // -------------------------------------------------------------------------------------------------
 
-/// Default timeout (in milliseconds) applied when collecting interactive stdout/stderr streams.
+/// Default stream collection timeout (in milliseconds) on Unix hosts.
+#[cfg(unix)]
 const DEFAULT_STREAM_COLLECTION_TIMEOUT_MS: u64 = 300_000;
+
+/// Default stream collection timeout (in milliseconds) on Windows hosts.
+#[cfg(windows)]
+const DEFAULT_STREAM_COLLECTION_TIMEOUT_MS: u64 = 600_000;
 
 // -------------------------------------------------------------------------------------------------
 // Gateway Connection Configuration
@@ -103,6 +108,14 @@ const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS: u64 = 15_000;
 // -------------------------------------------------------------------------------------------------
 // Miscellaneous
 // -------------------------------------------------------------------------------------------------
+
+/// Default Nanvix Daemon executable on Unix hosts.
+#[cfg(unix)]
+const DEFAULT_NANVIXD_BINARY_PATH: &str = "./bin/nanvixd.elf";
+
+/// Default Nanvix Daemon executable on Windows hosts.
+#[cfg(windows)]
+const DEFAULT_NANVIXD_BINARY_PATH: &str = "./bin/nanvixd.exe";
 
 /// Default temporary directory used for runner cleanup on Unix hosts.
 #[cfg(unix)]
@@ -316,10 +329,11 @@ impl RunnerConfig {
     ///
     fn from_table(table: &Table) -> Result<Self> {
         Ok(Self {
-            nanvixd_binary_path: read_required_string(
+            nanvixd_binary_path: read_string_with_default(
                 table,
                 "nanvixd_binary_path",
                 "runner.nanvixd_binary_path",
+                default_nanvixd_binary_path,
             )?,
             working_directory: read_required_string(
                 table,
@@ -509,6 +523,8 @@ pub struct TestCaseConfig {
     pub expected_exit_code: Option<i32>,
     /// Optional list of machine types on which this test should run.
     pub runs_on: Option<Vec<String>>,
+    /// Optional list of host operating systems (`linux`, `windows`). Absent means all hosts.
+    pub hosts: Option<Vec<String>>,
     /// Optional list of guest target architectures (e.g. `x86`, `x86_64`) on which this test
     /// should run. Absent means the test runs on every target. Gates suites that only build or
     /// run on a specific guest ABI — for example the dlfcn dynamic-linker and setjmp suites are
@@ -540,6 +556,9 @@ pub struct TestCaseConfig {
 impl TestCaseConfig {
     /// Build modes recognized by the `build_modes` gate and by the active `BUILD_MODE` selector.
     pub const KNOWN_BUILD_MODES: [&'static str; 2] = ["debug", "release"];
+
+    /// Host operating systems recognized by the `hosts` gate.
+    pub const KNOWN_HOSTS: [&'static str; 2] = ["linux", "windows"];
 
     /// Signals that the `signal` executor may send to nanvixd: the ones that nanvixd handles to
     /// shut down gracefully.
@@ -574,6 +593,7 @@ impl TestCaseConfig {
         let extra_nanvixd_args_field: String = format!("{entry_prefix}.extra_nanvixd_args");
         let expected_exit_code_field: String = format!("{entry_prefix}.expected_exit_code");
         let runs_on_field: String = format!("{entry_prefix}.runs_on");
+        let hosts_field: String = format!("{entry_prefix}.hosts");
         let targets_field: String = format!("{entry_prefix}.targets");
         let build_modes_field: String = format!("{entry_prefix}.build_modes");
         let program_env_field: String = format!("{entry_prefix}.program_env");
@@ -616,6 +636,7 @@ impl TestCaseConfig {
                 expected_exit_code_field.as_str(),
             )?,
             runs_on: read_optional_string_array(table, "runs_on", runs_on_field.as_str())?,
+            hosts: read_optional_string_array(table, "hosts", hosts_field.as_str())?,
             targets: read_optional_string_array(table, "targets", targets_field.as_str())?,
             build_modes: read_optional_string_array(
                 table,
@@ -725,6 +746,24 @@ impl TestCaseConfig {
             return Err(::anyhow::anyhow!(reason));
         }
 
+        if let Some(hosts) = &self.hosts {
+            if hosts.is_empty() {
+                return Err(::anyhow::anyhow!(
+                    "tests[{index}] must specify a non-empty 'hosts' list"
+                ));
+            }
+            if let Some(unknown_host) = hosts
+                .iter()
+                .find(|host| !Self::KNOWN_HOSTS.contains(&host.as_str()))
+            {
+                return Err(::anyhow::anyhow!(
+                    "tests[{index}] has an unknown host '{unknown_host}' in 'hosts' (known hosts: \
+                     {})",
+                    Self::KNOWN_HOSTS.join(", ")
+                ));
+            }
+        }
+
         // `build_modes` must list at least one mode: an empty list would match no build mode and
         // silently disable the test in every run.
         if self.build_modes.is_empty() {
@@ -827,6 +866,26 @@ impl TestCaseConfig {
     ///
     /// # Description
     ///
+    /// Checks whether this test supports the specified host operating system.
+    ///
+    /// # Parameters
+    ///
+    /// - `host`: Host operating system, as reported by `std::env::consts::OS`.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` when `hosts` is absent or contains the given host.
+    ///
+    pub fn should_run_on_host(&self, host: &str) -> bool {
+        match &self.hosts {
+            None => true,
+            Some(hosts) => hosts.iter().any(|allowed| allowed == host),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Checks whether this test case should run on the specified guest target architecture.
     ///
     /// # Parameters
@@ -885,6 +944,11 @@ impl TestCaseConfig {
 //==================================================================================================
 // Helper Functions
 //==================================================================================================
+
+/// Returns the host-native daemon path when the runner omits `nanvixd_binary_path`.
+fn default_nanvixd_binary_path() -> String {
+    DEFAULT_NANVIXD_BINARY_PATH.to_string()
+}
 
 ///
 /// # Description

@@ -1176,7 +1176,7 @@ jobs:
           BUILD_MODE: ${{ matrix.build-type }}
         run: |
           # The config path must be the last argument, so -shard precedes it.
-          & .\bin\nanvix-test.exe -shard "${{ matrix.shard }}/4" .\test\test-standalone-windows.toml
+          & .\bin\nanvix-test.exe -shard "${{ matrix.shard }}/4" .\test\test-standalone.toml
 
       # Ported POSIX C test suites. Boots the prebuilt <suite>.initrd images
       # (built by the Windows build job via all-posix-test-images and downloaded
