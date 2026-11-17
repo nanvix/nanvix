@@ -1,5 +1,5 @@
 ---
-name: fix-issue
+name: nanvix-fix-issue
 description: Guide for fixing a GitHub issue as a stack of small, reviewed, CI-green pull requests. Use this when asked to fix an issue and open PRs.
 ---
 
