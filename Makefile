@@ -951,25 +951,25 @@ STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_PROCD_ONLY_TESTS) $(STANDA
 STANDALONE_WITH_VFS_INITRDS := $(STANDALONE_TEST_BINARIES:%=$(BINARIES_DIR)/%.initrd)
 STANDALONE_PROCD_ONLY_INITRDS := $(STANDALONE_PROCD_ONLY_TESTS:%=$(BINARIES_DIR)/%.initrd)
 
-# Cross-target build guard.
+# Build configuration guard.
 #
-# $(BINARIES_DIR) is shared across TARGETs, but the guest test ELFs, RAMFS images, and multibinary
-# boot images (`*.initrd`) are architecture-specific. On an incremental build that switches TARGET
-# without a `clean`, cached prerequisite mtimes can leave a stale wrong-architecture output in
-# place. This guard records the last-built TARGET and removes those shared-path outputs when it
-# changes. It is wired as an order-only prerequisite of the relevant image and POSIX-test rules, so
-# it runs once before any output is considered for reuse. Clean builds and CI (a fresh workspace per
-# target) are unaffected.
-TARGET_SENTINEL := $(BINARIES_DIR)/.last-build-target
+# Staging preserves timestamps, so returning to an older Cargo configuration can leave newer
+# shared-path images looking up to date. Invalidate those outputs when the configuration changes.
+# The sentinel is a normal prerequisite: Make may have cached an output's mtime before the guard
+# removes it, so deletion alone through an order-only prerequisite does not ensure a rebuild.
+BUILD_CONFIG := $(TARGET)-$(BUILD_MODE)-$(LOG_LEVEL)-$(MEMORY_SIZE_MB)
+BUILD_CONFIG_SENTINEL := $(BINARIES_DIR)/.last-build-config
 
-.PHONY: target-guard
-target-guard:
+.PHONY: build-config-guard
+build-config-guard:
 	@mkdir -p $(BINARIES_DIR)
-	@if [ "$$(cat '$(TARGET_SENTINEL)' 2>/dev/null)" != "$(TARGET)" ]; then \
-		echo "[target-guard] TARGET='$(TARGET)' differs from last build; removing stale guest test images from $(BINARIES_DIR)"; \
-		$(RM_CMD) $(BINARIES_DIR)/*.initrd $(BINARIES_DIR)/test-c-*.elf $(BINARIES_DIR)/posix-tests-ramfs*.img; \
-		echo '$(TARGET)' > '$(TARGET_SENTINEL)'; \
+	@if [ "$$(cat '$(BUILD_CONFIG_SENTINEL)' 2>/dev/null)" != "$(BUILD_CONFIG)" ]; then \
+		echo "[build-config-guard] Configuration '$(BUILD_CONFIG)' differs from last build; removing stale guest test images from $(BINARIES_DIR)"; \
+		$(RM_CMD) $(BINARIES_DIR)/*.initrd $(BINARIES_DIR)/test-c-*.elf $(BINARIES_DIR)/posix-tests-ramfs*.img && \
+		printf '%s\n' '$(BUILD_CONFIG)' > '$(BUILD_CONFIG_SENTINEL)'; \
 	fi
+
+$(BUILD_CONFIG_SENTINEL): build-config-guard ;
 
 # Bridge from the side-effect-producing build targets to the actual ELF/mkimage files they
 # leave in $(BINARIES_DIR). These rules have an empty recipe (the trailing `;`) and a normal
@@ -1004,7 +1004,7 @@ $(STANDALONE_WITH_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT) \
 		$(MKIMAGE) \
-		| target-guard
+		$(BUILD_CONFIG_SENTINEL)
 	$(MKIMAGE) -o $@ \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
@@ -1015,7 +1015,7 @@ $(STANDALONE_PROCD_ONLY_INITRDS): $(BINARIES_DIR)/%.initrd: \
 		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
 		$(MKIMAGE) \
-		| target-guard
+		$(BUILD_CONFIG_SENTINEL)
 	$(MKIMAGE) -o $@ \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
 		$(BINARIES_DIR)/$*.$(EXEC_FORMAT)\;$*

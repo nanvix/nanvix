@@ -13,3 +13,16 @@ environment:
 - **[Windows Build](build-windows.md)** — Full build workflow on Windows 11. Host components are
   built natively; guest components are cross-compiled using a local toolchain. Uses `z.ps1` as the
   build utility.
+
+## Switching Build Configurations
+
+The shared `bin/` directory tracks the last image build configuration in `.last-build-config`:
+`TARGET`, the Cargo build mode (including release profiling), `LOG_LEVEL`, and `MEMORY_SIZE`.
+Changing any of these invalidates standalone `.initrd` images, POSIX C test executables, and
+POSIX RAMFS images so that timestamp-preserving staging cannot reuse images from another
+configuration. Returning to a previously built configuration also rebuilds these outputs;
+repeating the same configuration preserves incremental image builds.
+
+The first build after upgrading from the old target-only guard invalidates these outputs once.
+The obsolete `.last-build-target` file is ignored. Do not run different configurations concurrently
+in the same worktree, because staging paths are shared.

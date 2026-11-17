@@ -281,7 +281,7 @@ POSIX_TEST_LINK_LIBM_$(1) := $$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))),$$(POS
 $$(BINARIES_DIR)/$(1).$$(EXEC_FORMAT): $$(POSIX_TEST_OBJS_$(1)) $$(POSIX_TEST_CRT_OBJ) \
 		$$(POSIX_TEST_LINK_LIBC_$(1)) $$(POSIX_TEST_LINK_LIBM_$(1)) \
 		$$(POSIX_TEST_LINK_CRT0_$(1)) $$(GUEST_C_APP_LD_SCRIPT) \
-		$$(POSIX_TEST_EXTRA_LD_DEPS_$(1)) | target-guard
+		$$(POSIX_TEST_EXTRA_LD_DEPS_$(1)) $$(BUILD_CONFIG_SENTINEL)
 	@echo "[posix-test] linking $(1) against libc.a$$(if $$(POSIX_TEST_NO_STATIC_LIBM_$(1)),, + libm.a)$$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))), (PIE))"
 	$$(GUEST_C_APP_LD) $$(GUEST_C_APP_LDFLAGS) $$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))),$$(POSIX_TEST_PIE_LDFLAGS)) \
 		$$(POSIX_TEST_OBJS_$(1)) $$(POSIX_TEST_CRT_OBJ) \
@@ -330,7 +330,7 @@ $$(BINARIES_DIR)/$(1).initrd: $$(BINARIES_DIR)/$(1).$$(EXEC_FORMAT) \
 		$$(BINARIES_DIR)/procd.$$(EXEC_FORMAT) \
 		$$(BINARIES_DIR)/memd.$$(EXEC_FORMAT) \
 		$$(BINARIES_DIR)/vfsd.$$(EXEC_FORMAT) \
-		$$(MKIMAGE) | target-guard
+		$$(MKIMAGE) $$(BUILD_CONFIG_SENTINEL)
 	$$(MKIMAGE) -o $$@ \
 		$$(BINARIES_DIR)/procd.$$(EXEC_FORMAT)\;procd \
 		$$(BINARIES_DIR)/memd.$$(EXEC_FORMAT)\;memd \
@@ -1542,10 +1542,9 @@ $(POSIX_TEST_EXEC_SIGNALS_IMG): $(BINARIES_DIR)/$(POSIX_TEST_EXEC_SIGNALS_SUITE)
 # as well as i686.
 POSIX_TEST_DLFCN_FIXTURE_IMGS := $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) $(POSIX_TEST_WEAK_IMG)
 
-# These images also use shared bin/ paths and must be invalidated before an
-# incremental cross-target build can consider their cached mtimes.
+# These images also use shared bin/ paths and must be rebuilt when the build configuration changes.
 $(POSIX_TEST_RAMFS_IMG) $(POSIX_TEST_DLFCN_FIXTURE_IMGS) $(POSIX_TEST_EXECVP_IMG) \
-		$(POSIX_TEST_EXEC_SIGNALS_IMG): | target-guard
+		$(POSIX_TEST_EXEC_SIGNALS_IMG): $(BUILD_CONFIG_SENTINEL)
 
 .PHONY: all-posix-test-images
 all-posix-test-images: $(POSIX_TEST_INITRDS) \
