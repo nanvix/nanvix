@@ -7,9 +7,15 @@
 
 use crate::set_errno;
 use ::sysapi::{
-    errno::ERANGE,
+    errno::{
+        EINVAL,
+        ERANGE,
+    },
     ffi::c_char,
 };
+
+/// Retains the binary significand plus guard bits; later digits contribute a sticky bit.
+const MAX_HEX_DIGITS: u32 = 16;
 
 //==================================================================================================
 // Private Functions
@@ -82,29 +88,35 @@ unsafe fn parse_hex_float(p: *const c_char) -> Option<(*const c_char, f64, bool)
     }
 
     let mut q: *const c_char = p.add(2);
-    let mut value: f64 = 0.0;
+    let mut significand: u64 = 0;
+    let mut kept: u32 = 0;
+    let mut exponent: i64 = 0;
+    let mut sticky: bool = false;
+    let mut fractional: bool = false;
     let mut parsed_digit: bool = false;
-    let mut parsed_nonzero_digit: bool = false;
 
-    while is_hex_digit(*q) {
-        let digit: u8 = hex_digit_val(*q);
-        parsed_digit = true;
-        parsed_nonzero_digit |= digit != 0;
-        value = value * 16.0 + f64::from(digit);
-        q = q.add(1);
-    }
-
-    if *q as u8 == b'.' {
-        q = q.add(1);
-        let mut divisor: f64 = 16.0;
-        while is_hex_digit(*q) {
+    loop {
+        if is_hex_digit(*q) {
             let digit: u8 = hex_digit_val(*q);
             parsed_digit = true;
-            parsed_nonzero_digit |= digit != 0;
-            value += f64::from(digit) / divisor;
-            divisor *= 16.0;
-            q = q.add(1);
+            if fractional {
+                exponent = exponent.saturating_sub(4);
+            }
+            if significand != 0 || digit != 0 {
+                if kept < MAX_HEX_DIGITS {
+                    significand = (significand << 4) | u64::from(digit);
+                    kept += 1;
+                } else {
+                    exponent = exponent.saturating_add(4);
+                    sticky |= digit != 0;
+                }
+            }
+        } else if *q as u8 == b'.' && !fractional {
+            fractional = true;
+        } else {
+            break;
         }
+        q = q.add(1);
     }
 
     if !parsed_digit {
@@ -121,23 +133,69 @@ unsafe fn parse_hex_float(p: *const c_char) -> Option<(*const c_char, f64, bool)
         }
 
         if is_digit(*q) {
-            let mut exp: i32 = 0;
+            let mut exp: i64 = 0;
             while is_digit(*q) {
                 exp = exp
                     .saturating_mul(10)
-                    .saturating_add(i32::from(digit_val(*q)));
+                    .saturating_add(i64::from(digit_val(*q)));
                 q = q.add(1);
             }
             if exp_negative {
                 exp = exp.saturating_neg();
             }
-            value *= pow2(exp);
+            exponent = exponent.saturating_add(exp);
         } else {
             q = exponent_marker;
         }
     }
 
-    Some((q, value, parsed_nonzero_digit))
+    Some((q, hex_value(significand, exponent, sticky), significand != 0))
+}
+
+/// Rounds the retained hexadecimal bits once, at the final normal or subnormal precision.
+fn hex_value(significand: u64, exponent: i64, sticky: bool) -> f64 {
+    if significand == 0 {
+        return 0.0;
+    }
+    let bits: u32 = u64::BITS - significand.leading_zeros();
+    let mut top: i64 = exponent.saturating_add(i64::from(bits) - 1);
+    if top >= i64::from(f64::MAX_EXP) {
+        return f64::INFINITY;
+    }
+    let normal: bool = top >= i64::from(f64::MIN_EXP - 1);
+    let shift: i64 = if normal {
+        i64::from(bits) - i64::from(f64::MANTISSA_DIGITS)
+    } else {
+        (i64::from(f64::MIN_EXP) - i64::from(f64::MANTISSA_DIGITS)).saturating_sub(exponent)
+    };
+    if shift > i64::from(u64::BITS) {
+        return 0.0;
+    }
+    let mut rounded: u64 = if shift > 0 {
+        let (whole, remainder): (u64, u64) = if shift == i64::from(u64::BITS) {
+            (0, significand)
+        } else {
+            (significand >> shift, significand & ((1u64 << shift) - 1))
+        };
+        let halfway: u64 = 1u64 << (shift - 1);
+        whole
+            + u64::from(remainder > halfway || (remainder == halfway && (sticky || whole & 1 != 0)))
+    } else {
+        significand << -shift
+    };
+    if !normal {
+        return f64::from_bits(rounded);
+    }
+    if rounded == 1u64 << f64::MANTISSA_DIGITS {
+        rounded >>= 1;
+        top += 1;
+    }
+    if top >= i64::from(f64::MAX_EXP) {
+        return f64::INFINITY;
+    }
+    let fraction_bits: u32 = f64::MANTISSA_DIGITS - 1;
+    let biased: u64 = (top + i64::from(f64::MAX_EXP - 1)) as u64;
+    f64::from_bits((biased << fraction_bits) | (rounded & ((1u64 << fraction_bits) - 1)))
 }
 
 //==================================================================================================
@@ -251,25 +309,19 @@ pub unsafe extern "C" fn strtod(nptr: *const c_char, endptr: *mut *mut c_char) -
     }
 
     // Parse integer part.
-    let mut int_part: f64 = 0.0;
     let mut parsed_nonzero_digit: bool = false;
     while is_digit(*p) {
         let digit: u8 = digit_val(*p);
         parsed_nonzero_digit |= digit != 0;
-        int_part = int_part * 10.0 + f64::from(digit);
         p = p.add(1);
     }
 
     // Parse fractional part.
-    let mut frac_part: f64 = 0.0;
     if *p as u8 == b'.' {
         p = p.add(1);
-        let mut divisor: f64 = 10.0;
         while is_digit(*p) {
             let digit: u8 = digit_val(*p);
             parsed_nonzero_digit |= digit != 0;
-            frac_part += f64::from(digit) / divisor;
-            divisor *= 10.0;
             p = p.add(1);
         }
     }
@@ -286,37 +338,43 @@ pub unsafe extern "C" fn strtod(nptr: *const c_char, endptr: *mut *mut c_char) -
         }
     }
 
-    let mut result: f64 = int_part + frac_part;
-
     // Parse exponent part.
     if *p as u8 == b'e' || *p as u8 == b'E' {
         let saved: *const c_char = p;
         p = p.add(1);
 
-        let exp_negative: bool = *p as u8 == b'-';
         if *p as u8 == b'+' || *p as u8 == b'-' {
             p = p.add(1);
         }
 
         if is_digit(*p) {
-            let mut exp: i32 = 0;
             while is_digit(*p) {
-                exp = exp
-                    .saturating_mul(10)
-                    .saturating_add(i32::from(digit_val(*p)));
                 p = p.add(1);
             }
-
-            if exp_negative {
-                exp = exp.saturating_neg();
-            }
-
-            result *= pow10(exp);
         } else {
             // No digits after 'e'/'E', rewind.
             p = saved;
         }
     }
+
+    // The scanned subject is ASCII and valid decimal syntax. Core's allocation-free parser
+    // combines the significand and exponent before rounding, even for arbitrarily long inputs.
+    let subject: &str = unsafe {
+        core::str::from_utf8_unchecked(core::slice::from_raw_parts(
+            start.cast::<u8>(),
+            p.offset_from(start) as usize,
+        ))
+    };
+    let mut result: f64 = match subject.parse::<f64>() {
+        Ok(value) => value,
+        Err(_) => {
+            set_errno(EINVAL);
+            if !endptr.is_null() {
+                *endptr = nptr.cast_mut();
+            }
+            return 0.0;
+        },
+    };
 
     if negative {
         result = -result;
@@ -337,49 +395,6 @@ pub unsafe extern "C" fn strtod(nptr: *const c_char, endptr: *mut *mut c_char) -
     }
 
     result
-}
-
-/// Computes 10 raised to the power `exp`.
-#[allow(clippy::cast_precision_loss)]
-fn pow10(exp: i32) -> f64 {
-    let mut result: f64 = 1.0;
-    let mut base: f64 = 10.0;
-    let mut n: u32 = exp.unsigned_abs();
-
-    while n > 0 {
-        if n & 1 != 0 {
-            result *= base;
-        }
-        base *= base;
-        n >>= 1;
-    }
-
-    if exp < 0 {
-        1.0 / result
-    } else {
-        result
-    }
-}
-
-/// Computes 2 raised to the power `exp`.
-fn pow2(exp: i32) -> f64 {
-    let mut result: f64 = 1.0;
-    let mut base: f64 = 2.0;
-    let mut n: u32 = exp.unsigned_abs();
-
-    while n > 0 {
-        if n & 1 != 0 {
-            result *= base;
-        }
-        base *= base;
-        n >>= 1;
-    }
-
-    if exp < 0 {
-        1.0 / result
-    } else {
-        result
-    }
 }
 
 #[cfg(all(test, feature = "std"))]

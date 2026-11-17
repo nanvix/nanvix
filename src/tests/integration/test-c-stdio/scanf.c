@@ -165,7 +165,7 @@ static void test_scan_relative_seek(void)
 
 static void test_stdin_scanners(void)
 {
-    FILE *stream = input_file("12 34!");
+    FILE *stream = input_file("12 34!1.25 -2.5;");
     int saved = dup(STDIN_FILENO);
     assert(saved >= 0);
     assert(dup2(fileno(stream), STDIN_FILENO) == STDIN_FILENO);
@@ -174,6 +174,11 @@ static void test_stdin_scanners(void)
     assert(scanf("%d", &value) == 1 && value == 12);
     assert(call_vscanf(" %d", &value) == 1 && value == 34);
     assert(fgetc(stdin) == '!');
+    float single = 0.0f;
+    double wide = 0.0;
+    assert(scanf("%f", &single) == 1 && single == 1.25f);
+    assert(call_vscanf("%lf", &wide) == 1 && wide == -2.5);
+    assert(fgetc(stdin) == ';');
     assert(scanf("%d", &value) == EOF && feof(stdin));
     assert(dup2(saved, STDIN_FILENO) == STDIN_FILENO);
     assert(close(saved) == 0);
@@ -199,6 +204,64 @@ static void test_scan_bytes_and_pipe(void)
     assert(fclose(stream) == 0);
 }
 
+static void test_float_scanners(void)
+{
+    FILE *stream = input_file("-1.25e2 0x1.8p+2 3.5!");
+    float value = 0.0f;
+    double wide = 0.0;
+    long double extended = 0.0L;
+    assert(fscanf(stream, "%f %la %Lf", &value, &wide, &extended) == 3);
+    assert(value == -125.0f && wide == 6.0 && extended == 3.5L);
+    assert(fgetc(stream) == '!');
+    assert(fclose(stream) == 0);
+
+    stream = input_file("1e+!2.5,");
+    value = 7.0f;
+    assert(call_vfscanf(stream, "%f", &value) == 0 && value == 7.0f);
+    assert(fgetc(stream) == '!');
+    assert(call_vfscanf(stream, "%*f") == 0);
+    assert(fgetc(stream) == ',');
+    assert(fclose(stream) == 0);
+}
+
+static void test_float_scan_scaling(void)
+{
+    FILE *stream = input_file("1e-310 0x1p-1074 0e400 -0x0p2048!");
+    double decimal = 0.0, hex = 0.0, zero = 1.0, negative_zero = 1.0;
+    assert(fscanf(stream, "%lf %la %lf %la", &decimal, &hex, &zero, &negative_zero) == 4);
+    assert(decimal == 1e-310 && hex == 0x1p-1074);
+    assert(zero == 0.0 && negative_zero == 0.0);
+    assert(1.0 / negative_zero < 0.0);
+    assert(fgetc(stream) == '!');
+    assert(fclose(stream) == 0);
+
+    stream = input_file("0x1.7ffffffffffffp-1074 0x1.0000000000001p-1075!");
+    assert(fscanf(stream, "%la %la", &decimal, &hex) == 2);
+    assert(decimal == 0x1p-1074 && hex == 0x1p-1074);
+    assert(fgetc(stream) == '!');
+    assert(fclose(stream) == 0);
+}
+
+static void test_float_scan_long_significands(void)
+{
+    char input[400];
+    memcpy(input, "0x1", 3);
+    memset(input + 3, '0', 256);
+    strcpy(input + 259, "p-1024!");
+    FILE *stream = input_file(input);
+    double value = 0.0;
+    assert(fscanf(stream, "%la", &value) == 1 && value == 1.0);
+    assert(fgetc(stream) == '!');
+    assert(fclose(stream) == 0);
+    memcpy(input, "0.", 2);
+    memset(input + 2, '0', 309);
+    strcpy(input + 311, "1e310!");
+    stream = input_file(input);
+    assert(fscanf(stream, "%lf", &value) == 1 && value == 1.0);
+    assert(fgetc(stream) == '!');
+    assert(fclose(stream) == 0);
+}
+
 void test_scanners(void)
 {
     test_file_scanners();
@@ -207,5 +270,8 @@ void test_scanners(void)
     test_scan_relative_seek();
     test_stdin_scanners();
     test_scan_bytes_and_pipe();
+    test_float_scanners();
+    test_float_scan_scaling();
+    test_float_scan_long_significands();
     assert(remove("stdio-scan.tmp") == 0);
 }

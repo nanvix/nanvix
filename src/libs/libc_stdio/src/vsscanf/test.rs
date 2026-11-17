@@ -196,3 +196,58 @@ fn scan_incomplete_integers_are_matching_failures() {
     assert_eq!(value, 0);
     assert_eq!(tail as u8, b'x');
 }
+
+#[test]
+fn scan_floats_preserve_delimiters_and_widths() {
+    let mut value: f32 = 0.0;
+    let mut wide: f64 = 0.0;
+    let mut tail: c_char = 0;
+    let mut count: c_int = 0;
+    unsafe {
+        assert_eq!(
+            run(
+                c"-1.25e2 0x1.8p+2!".as_ptr(),
+                c"%f %la%n%c".as_ptr(),
+                &raw mut value,
+                &raw mut wide,
+                &raw mut count,
+                &raw mut tail
+            ),
+            3
+        );
+        assert_eq!(value, -125.0);
+        assert_eq!(wide, 6.0);
+        assert_eq!(count, 16);
+        assert_eq!(tail as u8, b'!');
+        assert_eq!(run(c"1.25!".as_ptr(), c"%3f%c".as_ptr(), &raw mut value, &raw mut tail), 2);
+        assert_eq!(value, 1.2);
+        assert_eq!(tail as u8, b'5');
+        assert_eq!(run(c"2.5!".as_ptr(), c"%*f%c".as_ptr(), &raw mut tail), 1);
+        assert_eq!(tail as u8, b'!');
+    }
+}
+
+#[test]
+fn scan_float_special_values_and_incomplete_items() {
+    let mut value: f64 = 7.0;
+    let mut tail: c_char = 0;
+    unsafe {
+        assert_eq!(
+            run(c"-INFINITY!".as_ptr(), c"%lf%c".as_ptr(), &raw mut value, &raw mut tail),
+            2
+        );
+        assert_eq!(value, f64::NEG_INFINITY);
+        assert_eq!(tail as u8, b'!');
+        assert_eq!(
+            run(c"NaN(payload)!".as_ptr(), c"%lg%c".as_ptr(), &raw mut value, &raw mut tail),
+            2
+        );
+        assert!(value.is_nan());
+        assert_eq!(tail as u8, b'!');
+    }
+    for input in [c"1e+", c"+", c".", c"0x", c"infi", c"nan("] {
+        value = 7.0;
+        assert_eq!(unsafe { run(input.as_ptr(), c"%lf".as_ptr(), &raw mut value) }, 0);
+        assert_eq!(value, 7.0);
+    }
+}

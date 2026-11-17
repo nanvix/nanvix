@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+mod float;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -361,6 +363,15 @@ unsafe fn scan(cur: &mut Cursor, fmt: *const c_char, mut ap: VaList<'_>) -> c_in
             b'c' => unsafe { convert_char(cur, &mut ap, width, suppress) },
             b's' => unsafe { convert_str(cur, &mut ap, width, suppress) },
             b'[' => unsafe { convert_set(cur, &mut ap, &mut f, width, suppress) },
+            b'a' | b'A' | b'e' | b'E' | b'f' | b'F' | b'g' | b'G' => {
+                match unsafe { float::convert(cur, &mut ap, width, length, suppress) } {
+                    Ok(matched) => matched,
+                    Err(error) => {
+                        unsafe { *::sysapi::errno::__errno_location() = error };
+                        return if matched_any { count } else { EOF };
+                    },
+                }
+            },
             b'n' => {
                 if !suppress {
                     // %n stores the number of characters consumed so far, honoring the
@@ -525,6 +536,8 @@ pub(crate) unsafe fn scan_stream(stream: *mut FILE, fmt: *const c_char, ap: VaLi
 ///
 /// Reads formatted input from the string `s` according to `fmt`, using the variadic argument list
 /// `ap` for the storage locations.
+/// Supports integer, floating-point, string, character, scanset, and byte-count conversions.
+/// Floating-point items use `strtod` precision, including when stored as C `long double`.
 ///
 /// # Returns
 ///
