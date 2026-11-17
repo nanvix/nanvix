@@ -5,11 +5,17 @@
 // Imports
 //==================================================================================================
 
-use crate::EOF;
+use crate::{
+    fgetc::fgetc,
+    ungetc::ungetc,
+    EOF,
+    FILE,
+};
 use ::core::ffi::VaList;
 use ::sysapi::ffi::{
     c_char,
     c_int,
+    c_long,
     c_void,
 };
 
@@ -17,23 +23,60 @@ use ::sysapi::ffi::{
 // Input cursor
 //==================================================================================================
 
-/// A read cursor over a null-terminated input string.
+enum Input {
+    String(*const u8),
+    Stream(*mut FILE),
+}
+
+/// One-byte lookahead shared by string and stream conversions.
 struct Cursor {
-    p: *const u8,
+    input: Input,
+    lookahead: Option<c_int>,
     consumed: usize,
 }
 
 impl Cursor {
-    /// Returns the current byte without advancing (0 at end of input).
-    unsafe fn peek(&self) -> u8 {
-        unsafe { *self.p }
+    fn new(input: Input) -> Self {
+        Self {
+            input,
+            lookahead: None,
+            consumed: 0,
+        }
+    }
+
+    /// Returns the current byte without consuming it.
+    unsafe fn peek(&mut self) -> Option<u8> {
+        let c: c_int = match self.lookahead {
+            Some(c) => c,
+            None => {
+                let c: c_int = match &mut self.input {
+                    Input::String(p) => {
+                        let byte: u8 = unsafe { **p };
+                        if byte == 0 {
+                            EOF
+                        } else {
+                            *p = unsafe { p.add(1) };
+                            c_int::from(byte)
+                        }
+                    },
+                    Input::Stream(stream) => unsafe { fgetc(*stream) },
+                };
+                self.lookahead = Some(c);
+                c
+            },
+        };
+        if c == EOF {
+            None
+        } else {
+            Some(c as u8)
+        }
     }
 
     /// Returns the current byte and advances the cursor.
-    unsafe fn bump(&mut self) -> u8 {
-        let c: u8 = unsafe { *self.p };
-        if c != 0 {
-            self.p = unsafe { self.p.add(1) };
+    unsafe fn bump(&mut self) -> Option<u8> {
+        let c: Option<u8> = unsafe { self.peek() };
+        if c.is_some() {
+            self.lookahead = None;
             self.consumed += 1;
         }
         c
@@ -41,7 +84,7 @@ impl Cursor {
 
     /// Skips ASCII whitespace.
     unsafe fn skip_ws(&mut self) {
-        while is_space(unsafe { self.peek() }) {
+        while unsafe { self.peek() }.is_some_and(is_space) {
             unsafe { self.bump() };
         }
     }
@@ -99,7 +142,7 @@ unsafe fn store_int(ap: &mut VaList<'_>, length: Length, value: u64) {
             Length::Char => *ptr.cast::<i8>() = value as i8,
             Length::Short => *ptr.cast::<i16>() = value as i16,
             Length::Int => *ptr.cast::<i32>() = value as i32,
-            Length::Long => *ptr.cast::<i32>() = value as i32,
+            Length::Long => *ptr.cast::<c_long>() = value as c_long,
             Length::LongLong => *ptr.cast::<i64>() = value as i64,
             Length::Size => *ptr.cast::<usize>() = value as usize,
             // `%p` writes through a `void **`, storing a real pointer value.
@@ -125,63 +168,35 @@ unsafe fn convert_int(
     length: Length,
     suppress: bool,
 ) -> bool {
-    unsafe { cur.skip_ws() };
     let mut remaining: usize = if width == 0 { usize::MAX } else { width };
 
     let mut negative: bool = false;
-    let c: u8 = unsafe { cur.peek() };
-    if (c == b'+' || c == b'-') && remaining > 0 {
-        negative = c == b'-';
+    let c: Option<u8> = unsafe { cur.peek() };
+    if matches!(c, Some(b'+' | b'-')) {
+        negative = c == Some(b'-');
         unsafe { cur.bump() };
         remaining -= 1;
     }
 
-    let mut base: u32 = base;
-    if auto_base {
-        base = 10;
-        if unsafe { cur.peek() } == b'0' && remaining > 0 {
+    let mut base: u32 = if auto_base { 10 } else { base };
+    let mut seeded_zero: bool = false;
+    if (auto_base || base == 16) && remaining > 0 && unsafe { cur.peek() } == Some(b'0') {
+        unsafe { cur.bump() };
+        remaining -= 1;
+        seeded_zero = true;
+        if auto_base {
+            base = 8;
+        }
+        if remaining > 0 && matches!(unsafe { cur.peek() }, Some(b'x' | b'X')) {
             unsafe { cur.bump() };
             remaining -= 1;
-            // A leading 0 selects octal; a "0x"/"0X" prefix selects hexadecimal, but only
-            // when at least one hexadecimal digit follows it (matching strtol with base 0).
-            base = 8;
-            if (unsafe { cur.peek() } == b'x' || unsafe { cur.peek() } == b'X') && remaining > 0 {
-                let save: *const u8 = cur.p;
-                let save_consumed: usize = cur.consumed;
-                unsafe { cur.bump() };
-                if digit_value(unsafe { cur.peek() }, 16).is_some() {
-                    remaining -= 1;
-                    base = 16;
-                } else {
-                    // No hex digit after the prefix: keep the leading 0 as an octal value.
-                    cur.p = save;
-                    cur.consumed = save_consumed;
-                }
-            }
-            // A leading 0 already counts as a digit; fall through to read more.
-            return finish_int(cur, ap, base, negative, remaining, length, suppress, true);
-        }
-    } else if base == 16 && unsafe { cur.peek() } == b'0' && remaining >= 2 {
-        // Optional 0x/0X prefix for hex, consumed only when a hex digit follows it.
-        let save: *const u8 = cur.p;
-        let save_consumed: usize = cur.consumed;
-        unsafe { cur.bump() };
-        if unsafe { cur.peek() } == b'x' || unsafe { cur.peek() } == b'X' {
-            unsafe { cur.bump() };
-            if digit_value(unsafe { cur.peek() }, 16).is_some() {
-                remaining -= 2;
-            } else {
-                // No hex digit after the prefix: rewind so the leading 0 is read as a digit.
-                cur.p = save;
-                cur.consumed = save_consumed;
-            }
-        } else {
-            cur.p = save;
-            cur.consumed = save_consumed;
+            base = 16;
+            // scanf consumes an incomplete input item rather than rewinding like strtol.
+            seeded_zero = false;
         }
     }
 
-    unsafe { finish_int(cur, ap, base, negative, remaining, length, suppress, false) }
+    unsafe { finish_int(cur, ap, base, negative, remaining, length, suppress, seeded_zero) }
 }
 
 /// Reads digits and stores the resulting integer.
@@ -199,7 +214,7 @@ unsafe fn finish_int(
     let mut value: u64 = 0;
     let mut any: bool = seeded_zero;
     while remaining > 0 {
-        match digit_value(unsafe { cur.peek() }, base) {
+        match unsafe { cur.peek() }.and_then(|c| digit_value(c, base)) {
             Some(d) => {
                 value = value
                     .wrapping_mul(u64::from(base))
@@ -227,16 +242,8 @@ unsafe fn finish_int(
     true
 }
 
-/// Implementation of `vsscanf`.
-unsafe fn scan(s: *const c_char, fmt: *const c_char, mut ap: VaList<'_>) -> c_int {
-    if s.is_null() || fmt.is_null() {
-        return EOF;
-    }
-
-    let mut cur: Cursor = Cursor {
-        p: s.cast::<u8>(),
-        consumed: 0,
-    };
+/// Shared formatted-input engine.
+unsafe fn scan(cur: &mut Cursor, fmt: *const c_char, mut ap: VaList<'_>) -> c_int {
     let mut f: *const u8 = fmt.cast::<u8>();
     let mut count: c_int = 0;
     let mut matched_any: bool = false;
@@ -255,10 +262,10 @@ unsafe fn scan(s: *const c_char, fmt: *const c_char, mut ap: VaList<'_>) -> c_in
 
         if fc != b'%' {
             // Literal character must match.
-            if unsafe { cur.peek() } != fc {
+            if unsafe { cur.peek() } != Some(fc) {
                 // End-of-input before any conversion is an input failure (EOF); a
                 // differing byte is a matching failure that simply stops scanning.
-                if unsafe { cur.peek() } == 0 && !matched_any {
+                if unsafe { cur.peek() }.is_none() && !matched_any {
                     return EOF;
                 }
                 break;
@@ -273,9 +280,9 @@ unsafe fn scan(s: *const c_char, fmt: *const c_char, mut ap: VaList<'_>) -> c_in
         if unsafe { *f } == b'%' {
             // A literal `%%` matches a single '%' in the input without skipping leading
             // whitespace (it behaves like an ordinary character, not a conversion).
-            if unsafe { cur.peek() } != b'%' {
+            if unsafe { cur.peek() } != Some(b'%') {
                 // End-of-input before any conversion is an input failure (EOF).
-                if unsafe { cur.peek() } == 0 && !matched_any {
+                if unsafe { cur.peek() }.is_none() && !matched_any {
                     return EOF;
                 }
                 break;
@@ -294,7 +301,7 @@ unsafe fn scan(s: *const c_char, fmt: *const c_char, mut ap: VaList<'_>) -> c_in
         // Field width.
         let mut width: usize = 0;
         while let Some(d) = digit_value(unsafe { *f }, 10) {
-            width = width.wrapping_mul(10).wrapping_add(d as usize);
+            width = width.saturating_mul(10).saturating_add(d as usize);
             f = unsafe { f.add(1) };
         }
 
@@ -336,19 +343,24 @@ unsafe fn scan(s: *const c_char, fmt: *const c_char, mut ap: VaList<'_>) -> c_in
         }
         f = unsafe { f.add(1) };
 
+        if !matches!(spec, b'c' | b'[' | b'n') {
+            unsafe { cur.skip_ws() };
+        }
+        if spec != b'n' && unsafe { cur.peek() }.is_none() {
+            return if matched_any { count } else { EOF };
+        }
+
         let ok: bool = match spec {
-            b'd' => unsafe { convert_int(&mut cur, &mut ap, 10, false, width, length, suppress) },
-            b'u' => unsafe { convert_int(&mut cur, &mut ap, 10, false, width, length, suppress) },
-            b'i' => unsafe { convert_int(&mut cur, &mut ap, 10, true, width, length, suppress) },
-            b'o' => unsafe { convert_int(&mut cur, &mut ap, 8, false, width, length, suppress) },
-            b'x' | b'X' => unsafe {
-                convert_int(&mut cur, &mut ap, 16, false, width, length, suppress)
-            },
+            b'd' | b'u' => unsafe { convert_int(cur, &mut ap, 10, false, width, length, suppress) },
+            b'i' => unsafe { convert_int(cur, &mut ap, 10, true, width, length, suppress) },
+            b'o' => unsafe { convert_int(cur, &mut ap, 8, false, width, length, suppress) },
+            b'x' | b'X' => unsafe { convert_int(cur, &mut ap, 16, false, width, length, suppress) },
             b'p' => unsafe {
-                convert_int(&mut cur, &mut ap, 16, false, width, Length::Pointer, suppress)
+                convert_int(cur, &mut ap, 16, false, width, Length::Pointer, suppress)
             },
-            b'c' => unsafe { convert_char(&mut cur, &mut ap, width, suppress) },
-            b's' => unsafe { convert_str(&mut cur, &mut ap, width, suppress) },
+            b'c' => unsafe { convert_char(cur, &mut ap, width, suppress) },
+            b's' => unsafe { convert_str(cur, &mut ap, width, suppress) },
+            b'[' => unsafe { convert_set(cur, &mut ap, &mut f, width, suppress) },
             b'n' => {
                 if !suppress {
                     // %n stores the number of characters consumed so far, honoring the
@@ -366,9 +378,8 @@ unsafe fn scan(s: *const c_char, fmt: *const c_char, mut ap: VaList<'_>) -> c_in
         };
 
         if !ok {
-            // On a matching failure, stop. If input is exhausted with no match
-            // at all, report EOF.
-            if unsafe { cur.peek() } == 0 && !matched_any {
+            // A short %c read is an input failure; incomplete numeric items are mismatches.
+            if spec == b'c' && !matched_any {
                 return EOF;
             }
             break;
@@ -390,9 +401,6 @@ unsafe fn convert_char(
     suppress: bool,
 ) -> bool {
     let n: usize = if width == 0 { 1 } else { width };
-    if unsafe { cur.peek() } == 0 {
-        return false;
-    }
     let dst: *mut c_char = if suppress {
         core::ptr::null_mut()
     } else {
@@ -401,10 +409,9 @@ unsafe fn convert_char(
     };
     let mut i: usize = 0;
     while i < n {
-        let c: u8 = unsafe { cur.peek() };
-        if c == 0 {
+        let Some(c) = (unsafe { cur.peek() }) else {
             break;
-        }
+        };
         unsafe { cur.bump() };
         if !dst.is_null() {
             unsafe { *dst.add(i) = c as c_char };
@@ -418,8 +425,18 @@ unsafe fn convert_char(
 
 /// Parses a `%s` conversion.
 unsafe fn convert_str(cur: &mut Cursor, ap: &mut VaList<'_>, width: usize, suppress: bool) -> bool {
-    unsafe { cur.skip_ws() };
-    if unsafe { cur.peek() } == 0 || is_space(unsafe { cur.peek() }) {
+    unsafe { convert_bytes(cur, ap, width, suppress, |c| !is_space(c)) }
+}
+
+/// Reads a non-empty byte sequence and appends its terminating null byte.
+unsafe fn convert_bytes(
+    cur: &mut Cursor,
+    ap: &mut VaList<'_>,
+    width: usize,
+    suppress: bool,
+    accepts: impl Fn(u8) -> bool,
+) -> bool {
+    if !unsafe { cur.peek() }.is_some_and(&accepts) {
         return false;
     }
     let limit: usize = if width == 0 { usize::MAX } else { width };
@@ -431,8 +448,10 @@ unsafe fn convert_str(cur: &mut Cursor, ap: &mut VaList<'_>, width: usize, suppr
     };
     let mut i: usize = 0;
     while i < limit {
-        let c: u8 = unsafe { cur.peek() };
-        if c == 0 || is_space(c) {
+        let Some(c) = (unsafe { cur.peek() }) else {
+            break;
+        };
+        if !accepts(c) {
             break;
         }
         unsafe { cur.bump() };
@@ -445,6 +464,56 @@ unsafe fn convert_str(cur: &mut Cursor, ap: &mut VaList<'_>, width: usize, suppr
         unsafe { *dst.add(i) = 0 };
     }
     i > 0
+}
+
+/// Parses a scanset, including negation, a leading ']', and ascending byte ranges.
+unsafe fn convert_set(
+    cur: &mut Cursor,
+    ap: &mut VaList<'_>,
+    fmt: &mut *const u8,
+    width: usize,
+    suppress: bool,
+) -> bool {
+    let mut f: *const u8 = *fmt;
+    let inverted: bool = unsafe { *f } == b'^';
+    if inverted {
+        f = unsafe { f.add(1) };
+    }
+    let mut set: [bool; 256] = [false; 256];
+    if unsafe { *f } == b']' {
+        set[usize::from(b']')] = true;
+        f = unsafe { f.add(1) };
+    }
+    while unsafe { *f } != 0 && unsafe { *f } != b']' {
+        let start: u8 = unsafe { *f };
+        set[usize::from(start)] = true;
+        f = unsafe { f.add(1) };
+        if unsafe { *f } == b'-' {
+            let end: u8 = unsafe { *f.add(1) };
+            if end != 0 && end != b']' && start <= end {
+                set[usize::from(start)..=usize::from(end)].fill(true);
+                f = unsafe { f.add(2) };
+            }
+        }
+    }
+    if unsafe { *f } != b']' {
+        return false;
+    }
+    *fmt = unsafe { f.add(1) };
+    unsafe { convert_bytes(cur, ap, width, suppress, |c| set[usize::from(c)] != inverted) }
+}
+
+/// Scans a stream and returns its single lookahead byte to the stream on every exit path.
+pub(crate) unsafe fn scan_stream(stream: *mut FILE, fmt: *const c_char, ap: VaList<'_>) -> c_int {
+    let mut cur: Cursor = Cursor::new(Input::Stream(stream));
+    let ret: c_int = unsafe { scan(&mut cur, fmt, ap) };
+    if let Some(c) = cur.lookahead {
+        if c != EOF && unsafe { ungetc(c, stream) } == EOF {
+            unsafe { (*stream).error = 1 };
+            return if ret == 0 { EOF } else { ret };
+        }
+    }
+    ret
 }
 
 //==================================================================================================
@@ -469,7 +538,11 @@ unsafe fn convert_str(cur: &mut Cursor, ap: &mut VaList<'_>, width: usize, suppr
 ///
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn vsscanf(s: *const c_char, fmt: *const c_char, ap: VaList<'_>) -> c_int {
-    unsafe { scan(s, fmt, ap) }
+    if s.is_null() || fmt.is_null() {
+        return EOF;
+    }
+    let mut cur: Cursor = Cursor::new(Input::String(s.cast::<u8>()));
+    unsafe { scan(&mut cur, fmt, ap) }
 }
 
 //==================================================================================================

@@ -56,6 +56,13 @@ The system integration tests can be run directly using:
 The runner uses `test/test-standalone.toml` on Linux and
 `test/test-standalone-windows.toml` on Windows.
 
+The POSIX C suites use `test/test-posix.toml` and `test/test-posix-windows.toml`.
+The `posix/test-c-stdio` suite covers formatted input from files, redirected standard input,
+and pipes: integer, string, character, scanset, and `%n` conversions, assignment suppression,
+field widths, unread delimiters, relative seeks, and EOF/error indicators. Scansets support byte ranges
+such as `[a-z]`. Incomplete numeric input items are consumed and reported as matching failures,
+rather than rewound as in `strtol`.
+
 ### Test Modes
 
 The `nanvix-test.elf` utility supports two execution modes:

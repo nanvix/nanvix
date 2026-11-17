@@ -5,8 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::streams::FILE;
+use crate::{
+    streams::FILE,
+    EOF,
+    SEEK_CUR,
+};
 use ::sysapi::{
+    errno::{
+        __errno_location,
+        EOVERFLOW,
+    },
     ffi::c_int,
     sys_types::off_t,
 };
@@ -51,6 +59,18 @@ pub unsafe extern "C" fn fseeko(stream: *mut FILE, offset: off_t, whence: c_int)
         return -1;
     }
 
+    let offset: off_t = if whence == SEEK_CUR && (*stream).ungetc_buf != EOF {
+        match offset.checked_sub(1) {
+            Some(offset) => offset,
+            None => {
+                unsafe { *__errno_location() = EOVERFLOW };
+                (*stream).error = 1;
+                return EOF;
+            },
+        }
+    } else {
+        offset
+    };
     let fd: c_int = (*stream).fd;
     // SAFETY: fd comes from a valid FILE, offset and whence are caller-provided.
     let ret: off_t = unsafe { lseek(fd, offset, whence) };

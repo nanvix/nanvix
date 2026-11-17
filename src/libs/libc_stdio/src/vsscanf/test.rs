@@ -6,6 +6,7 @@ use super::{
     is_space,
     vsscanf,
     Cursor,
+    Input,
 };
 use ::std::vec::Vec;
 use ::sysapi::ffi::{
@@ -54,19 +55,16 @@ fn digit_value_respects_base() {
 #[test]
 fn cursor_skips_whitespace_and_bumps() {
     let data = c"  ab";
-    let mut cur = Cursor {
-        p: data.as_ptr().cast::<u8>(),
-        consumed: 0,
-    };
+    let mut cur = Cursor::new(Input::String(data.as_ptr().cast::<u8>()));
     // SAFETY: `cur` points at a valid null-terminated buffer.
     unsafe {
         cur.skip_ws();
-        assert_eq!(cur.peek(), b'a');
-        assert_eq!(cur.bump(), b'a');
-        assert_eq!(cur.bump(), b'b');
-        assert_eq!(cur.peek(), 0);
+        assert_eq!(cur.peek(), Some(b'a'));
+        assert_eq!(cur.bump(), Some(b'a'));
+        assert_eq!(cur.bump(), Some(b'b'));
+        assert_eq!(cur.peek(), None);
         // A bump at end-of-input does not advance past the terminator.
-        assert_eq!(cur.bump(), 0);
+        assert_eq!(cur.bump(), None);
     }
     // `consumed` counts every byte consumed, including the two skipped spaces.
     assert_eq!(cur.consumed, 4);
@@ -146,4 +144,55 @@ fn scan_stops_at_matching_failure() {
     let n = unsafe { run(c"12 xy".as_ptr(), c"%d %d".as_ptr(), &raw mut a, &raw mut b) };
     assert_eq!(n, 1);
     assert_eq!(a, 12);
+}
+
+#[test]
+fn scan_sets_preserve_delimiters_and_honor_width() {
+    let mut set: [c_char; 8] = [0; 8];
+    let mut tail: c_char = 0;
+    let mut consumed: c_int = 0;
+    unsafe {
+        assert_eq!(
+            run(
+                c"ab]!".as_ptr(),
+                c"%[]a-b]%n%c".as_ptr(),
+                set.as_mut_ptr(),
+                &raw mut consumed,
+                &raw mut tail
+            ),
+            2
+        );
+        assert_eq!(cstr_bytes(&set), b"ab]");
+        assert_eq!(consumed, 3);
+        assert_eq!(tail as u8, b'!');
+        assert_eq!(
+            run(c" abc,".as_ptr(), c"%3[^,]%c".as_ptr(), set.as_mut_ptr(), &raw mut tail),
+            2
+        );
+        assert_eq!(cstr_bytes(&set), b" ab");
+        assert_eq!(tail as u8, b'c');
+        assert_eq!(run(c"123!".as_ptr(), c"%*[0-9]%c".as_ptr(), &raw mut tail), 1);
+        assert_eq!(tail as u8, b'!');
+    }
+}
+
+#[test]
+fn scan_incomplete_integers_are_matching_failures() {
+    let mut value: c_int = 17;
+    for (input, format) in [
+        (c"+", c"%d"),
+        (c"-", c"%d"),
+        (c"0x", c"%i"),
+        (c"0x!", c"%x"),
+    ] {
+        assert_eq!(unsafe { run(input.as_ptr(), format.as_ptr(), &raw mut value) }, 0);
+        assert_eq!(value, 17);
+    }
+    let mut tail: c_char = 0;
+    assert_eq!(
+        unsafe { run(c"0x!".as_ptr(), c"%1i%c".as_ptr(), &raw mut value, &raw mut tail) },
+        2
+    );
+    assert_eq!(value, 0);
+    assert_eq!(tail as u8, b'x');
 }

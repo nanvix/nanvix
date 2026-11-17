@@ -18,6 +18,8 @@
 // Private Functions
 //==================================================================================================
 
+extern void test_scanners(void);
+
 // Calls vdprintf() with a freshly built variable argument list.
 static int call_vdprintf(int fd, const char *format, ...)
 {
@@ -133,6 +135,7 @@ int main(int argc, const char *argv[])
     test_formatted_buffers();
     test_descriptor_and_line_io();
     test_freopen();
+    test_scanners();
 
     // Write magic string to signal that the test passed.
     {
