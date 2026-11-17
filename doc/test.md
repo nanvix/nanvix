@@ -58,10 +58,14 @@ The runner uses `test/test-standalone.toml` on Linux and
 
 The POSIX C suites use `test/test-posix.toml` and `test/test-posix-windows.toml`.
 The `posix/test-c-stdio` suite covers formatted input from files, redirected standard input,
-and pipes: integer, string, character, scanset, and `%n` conversions, assignment suppression,
+and pipes: integer, floating-point, string, character, scanset, and `%n` conversions, suppression,
 field widths, unread delimiters, relative seeks, and EOF/error indicators. Scansets support byte ranges
 such as `[a-z]`. Incomplete numeric input items are consumed and reported as matching failures,
-rather than rewound as in `strtol`.
+rather than rewound as in `strtol` or `strtod`. Floating conversions accept decimal and hexadecimal
+input, infinity, and NaN. As with `strtold`, `%Lf` uses double-precision conversion with the guest's
+native `long double` storage layout.
+Numeric regressions cover subnormal rounding, signed zero, and long significands balanced by
+exponents.
 
 ### Test Modes
 

@@ -148,3 +148,60 @@ fn underflow_sets_erange() {
     assert_eq!(result, 0.0);
     assert_eq!(get_errno(), ERANGE);
 }
+
+#[test]
+fn exponent_scaling_preserves_subnormals_and_zero() {
+    for (input, expected) in [
+        (c"1e-310!", 1e-310),
+        (c"0x1p-1074!", f64::from_bits(1)),
+        (c"0x1.7ffffffffffffp-1074!", f64::from_bits(1)),
+        (c"0x1.0000000000001p-1075!", f64::from_bits(1)),
+    ] {
+        let mut end: *mut c_char = core::ptr::null_mut();
+        set_errno(0);
+        let result: f64 = unsafe { strtod(input.as_ptr(), &raw mut end) };
+        assert_eq!(result, expected, "incorrect subnormal conversion for {input:?}");
+        assert_eq!(unsafe { *end } as u8, b'!');
+        assert_eq!(get_errno(), ERANGE);
+    }
+    for input in [c"0e400!", c"0x0p2048!"] {
+        set_errno(0);
+        let result: f64 = unsafe { strtod(input.as_ptr(), core::ptr::null_mut()) };
+        assert_eq!(result, 0.0, "zero must not become NaN for {input:?}");
+        assert_eq!(get_errno(), 0);
+    }
+}
+
+#[test]
+fn long_significands_combine_with_their_exponents() {
+    let inputs: [::std::string::String; 2] = [
+        ::std::format!("0x1{}p-1024!", "0".repeat(256)),
+        ::std::format!("0.{}1e310!", "0".repeat(309)),
+    ];
+    for mut input in inputs {
+        input.push('\0');
+        let mut end: *mut c_char = core::ptr::null_mut();
+        set_errno(0);
+        assert_eq!(unsafe { strtod(input.as_ptr().cast::<c_char>(), &raw mut end) }, 1.0);
+        assert_eq!(unsafe { *end } as u8, b'!');
+        assert_eq!(get_errno(), 0);
+    }
+}
+
+#[test]
+fn hexadecimal_rounding_and_range_edges() {
+    for (input, expected, error) in [
+        (c"0x1.000000000000080000001p0!", f64::from_bits(1.0f64.to_bits() + 1), 0),
+        (c"0x1.000000000000000000001p-1075!", f64::from_bits(1), ERANGE),
+        (c"0x1.fffffffffffffp1023!", f64::MAX, 0),
+        (c"0x1.fffffffffffff8p1023!", f64::INFINITY, ERANGE),
+        (c"0x0.fffffffffffff8p-1022!", f64::MIN_POSITIVE, 0),
+        (c"0x1p-1075!", 0.0, ERANGE),
+    ] {
+        let mut end: *mut c_char = core::ptr::null_mut();
+        set_errno(0);
+        assert_eq!(unsafe { strtod(input.as_ptr(), &raw mut end) }, expected, "{input:?}");
+        assert_eq!(unsafe { *end } as u8, b'!');
+        assert_eq!(get_errno(), error, "{input:?}");
+    }
+}
