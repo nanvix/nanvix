@@ -33,11 +33,25 @@ const CHAR_PLUS: i64 = 0x2B;
 const CHAR_MINUS: i64 = 0x2D;
 
 //==================================================================================================
+// Structures
+//==================================================================================================
+
+/// Part of a string to convert that precedes its digits, as parsed by [`parse_prefix()`].
+pub(crate) struct Prefix {
+    /// Index of the first character after the leading whitespace, the sign, and the base prefix.
+    pub(crate) idx: usize,
+    /// Whether the string has a leading `-` sign.
+    pub(crate) negative: bool,
+    /// Base of the digits, in `2..=36`.
+    pub(crate) base: i64,
+}
+
+//==================================================================================================
 // Helper Functions
 //==================================================================================================
 
 /// Returns `true` if the given character value represents an ASCII whitespace character.
-pub(crate) fn is_whitespace(c: i64) -> bool {
+fn is_whitespace(c: i64) -> bool {
     c == CHAR_SPACE
         || c == CHAR_TAB
         || c == CHAR_NEWLINE
@@ -60,32 +74,29 @@ pub(crate) fn digit_value(c: i64) -> Option<i64> {
     }
 }
 
-//==================================================================================================
-// Public Functions
-//==================================================================================================
-
-/// Converts the initial portion of the string pointed to by `nptr` to [`intmax_t`].
+/// Parses the part of the string pointed to by `nptr` that precedes its digits.
 ///
-/// Skips leading whitespace, handles an optional `+`/`-` sign, auto-detects the base when `base`
-/// is `0` (hexadecimal for `0x`/`0X` prefix, octal for `0` prefix, decimal otherwise), and parses
-/// digits for bases 2 through 36. On overflow the result is clamped to [`i64::MAX`] or [`i64::MIN`]
-/// depending on the sign.
+/// Skips leading whitespace, handles an optional `+`/`-` sign, and determines the base of the
+/// digits: when `base` is `0`, hexadecimal for a `0x`/`0X` prefix, octal for a `0` prefix, and
+/// decimal otherwise. A `0x`/`0X` prefix is consumed only if a hexadecimal digit follows it.
+///
+/// # Returns
+///
+/// The parsed prefix, or [`None`] if `base` is neither `0` nor in `2..=36`. In the latter case,
+/// `errno` is set to `EINVAL` and, if `endptr` is non-null, `*endptr` is set to `nptr`.
 ///
 /// # Safety
 ///
 /// - `nptr` must point to a valid, null-terminated C string.
 /// - If `endptr` is non-null, it must point to a valid, writable `*mut c_char` location.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn strtoimax(
+pub(crate) unsafe fn parse_prefix(
     nptr: *const c_char,
     endptr: *mut *mut c_char,
     base: c_int,
-) -> intmax_t {
-    debug_assert!(!nptr.is_null());
-
+) -> Option<Prefix> {
     // Reject invalid bases per the C contract: `base` must be 0 (auto-detect) or in 2..=36.
     // An invalid base performs no conversion: POSIX requires `errno` to be set to `EINVAL`, so set
-    // it, set `*endptr` to `nptr`, and return 0.
+    // it, set `*endptr` to `nptr`, and let the caller return 0.
     let requested_base: i64 = i64::from(base);
     if requested_base != 0 && !(2..=36).contains(&requested_base) {
         // SAFETY: `__errno_location()` returns a valid pointer to thread-local `errno`.
@@ -93,7 +104,7 @@ pub unsafe extern "C" fn strtoimax(
         if !endptr.is_null() {
             *endptr = nptr as *mut c_char;
         }
-        return 0;
+        return None;
     }
 
     let mut idx: usize = 0;
@@ -145,6 +156,43 @@ pub unsafe extern "C" fn strtoimax(
     } else if effective_base == 0 {
         effective_base = 10;
     }
+
+    Some(Prefix {
+        idx,
+        negative,
+        base: effective_base,
+    })
+}
+
+//==================================================================================================
+// Public Functions
+//==================================================================================================
+
+/// Converts the initial portion of the string pointed to by `nptr` to [`intmax_t`].
+///
+/// Skips leading whitespace, handles an optional `+`/`-` sign, auto-detects the base when `base`
+/// is `0` (hexadecimal for `0x`/`0X` prefix, octal for `0` prefix, decimal otherwise), and parses
+/// digits for bases 2 through 36. On overflow the result is clamped to [`i64::MAX`] or [`i64::MIN`]
+/// depending on the sign.
+///
+/// # Safety
+///
+/// - `nptr` must point to a valid, null-terminated C string.
+/// - If `endptr` is non-null, it must point to a valid, writable `*mut c_char` location.
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn strtoimax(
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+    base: c_int,
+) -> intmax_t {
+    debug_assert!(!nptr.is_null());
+
+    let Some(prefix): Option<Prefix> = parse_prefix(nptr, endptr, base) else {
+        return 0;
+    };
+    let mut idx: usize = prefix.idx;
+    let negative: bool = prefix.negative;
+    let effective_base: i64 = prefix.base;
 
     // Parse digits. Accumulate as a negative value so that i64::MIN can be represented without
     // intermediate overflow (the negative range is one wider than the positive range).
