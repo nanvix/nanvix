@@ -480,50 +480,7 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
             pipe_closures: Vec::new(),
         };
     };
-    // The process has been removed from the registry, so an `Arc` strong count of one means no
-    // surviving descriptor — in this or any other process — still shares the open file description.
-    // A host-backed handle must therefore be closed on hostfsd, and a pipe end's count drops to
-    // zero (which the dropped end's `Drop` applies just below). As the sole owner, the lock is
-    // uncontended.
-    let removed_slots: Vec<Slot> = state.slots.into_values().collect();
-    let mut removed_ref_counts: BTreeMap<*const Mutex<VfsEntry>, usize> = BTreeMap::new();
-    for slot in &removed_slots {
-        let file_id: *const Mutex<VfsEntry> = Arc::as_ptr(&slot.file);
-        *removed_ref_counts.entry(file_id).or_insert(0) += 1;
-    }
-    let mut orphaned: Vec<i32> = Vec::new();
-    let mut orphaned_sockets: Vec<i32> = Vec::new();
-    let mut seen_files: BTreeSet<*const Mutex<VfsEntry>> = BTreeSet::new();
-    let mut pipe_closures: Vec<PipeClosure> = Vec::new();
-    for slot in removed_slots {
-        let file_id: *const Mutex<VfsEntry> = Arc::as_ptr(&slot.file);
-        let removed_refs: usize = *removed_ref_counts.get(&file_id).unwrap_or(&0);
-        if !seen_files.insert(file_id) || Arc::strong_count(&slot.file) != removed_refs {
-            continue;
-        }
-        match &slot.file.lock().handle {
-            VfsFileHandle::HostFs(h) => orphaned.push(h.remote_fd()),
-            VfsFileHandle::Pipe(end) => pipe_closures.push(PipeClosure {
-                pipe_id: end.pipe_id(),
-                was_write: end.is_write(),
-            }),
-            // A console token holds no external resource, so it contributes nothing to reclaim.
-            VfsFileHandle::Console(_) => {},
-            // A socket token holds the `networkd` descriptor: as the final reference, the endpoint
-            // must be closed on `networkd` so it does not leak. This arm must stay distinct so a
-            // socket is never mistaken for a hostfs or pipe handle.
-            VfsFileHandle::Socket(h) => orphaned_sockets.push(h.remote_fd()),
-            _ => {},
-        }
-        // `slot` — and the open file description it holds — is dropped here, after the registry lock
-        // has been released; the pipe end's `Drop` decrements its reader/writer count as part of
-        // that.
-    }
-    ProcessExitReclaim {
-        orphaned_hostfs_fds: orphaned,
-        orphaned_socket_fds: orphaned_sockets,
-        pipe_closures,
-    }
+    reclaim_detached_slots(state.slots.into_values().collect())
 }
 
 /// Applies close-on-exec to a process's descriptor table when it replaces its image.
@@ -590,11 +547,27 @@ pub fn vfs_exec_cloexec(pid: ProcessIdentifier) -> ProcessExitReclaim {
         state.bump_generation();
         removed
     };
-    // The registry lock has been released and the removed slots are owned here, so an `Arc` strong
-    // count of one means no surviving descriptor — in this or any other process — still shares the
-    // open file description, exactly as in `vfs_process_exit`. A host-backed handle must therefore
-    // be closed on hostfsd, and a pipe end's count drops to zero (which the dropped end's `Drop`
-    // applies as each slot leaves scope below).
+    reclaim_detached_slots(removed_slots)
+}
+
+/// Collects the resources to reclaim for slots detached from a process's descriptor table.
+///
+/// This is the last-reference accounting shared by [`vfs_process_exit`] and [`vfs_exec_cloexec`].
+/// An open file description is reclaimed once, and only when the detached slots hold all of its
+/// references: no surviving descriptor — in this or any other process — still shares it, so its
+/// lock is uncontended. Each slot, and the description it holds, is dropped here, and dropping may
+/// run backend teardown, so the caller must have released the registry lock.
+///
+/// # Parameters
+///
+/// - `removed_slots`: Slots detached from a process's descriptor table.
+///
+/// # Returns
+///
+/// The remote descriptors of host-backed descriptions to close on hostfsd, the `networkd`
+/// descriptors of sockets to close on `networkd`, and the pipe ends whose reference count reached
+/// zero.
+fn reclaim_detached_slots(removed_slots: Vec<Slot>) -> ProcessExitReclaim {
     let mut removed_ref_counts: BTreeMap<*const Mutex<VfsEntry>, usize> = BTreeMap::new();
     for slot in &removed_slots {
         let file_id: *const Mutex<VfsEntry> = Arc::as_ptr(&slot.file);
