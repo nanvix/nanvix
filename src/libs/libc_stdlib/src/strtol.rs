@@ -19,17 +19,17 @@ use ::sysapi::{
 };
 
 //==================================================================================================
-// Private Functions
+// Internal Functions
 //==================================================================================================
 
 /// Returns `true` if the given character is an ASCII whitespace character.
-fn is_whitespace(c: c_char) -> bool {
+pub(crate) fn is_whitespace(c: c_char) -> bool {
     let b = c as u8;
     b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' || b == 0x0b || b == 0x0c
 }
 
 /// Returns the numeric value of a digit character for the given base, or `None` if invalid.
-fn digit_value(c: c_char, base: c_int) -> Option<u8> {
+pub(crate) fn digit_value(c: c_char, base: c_int) -> Option<u8> {
     let b = c as u8;
     let val = match b {
         b'0'..=b'9' => b - b'0',
@@ -174,7 +174,7 @@ pub unsafe extern "C" fn strtol(
 ///
 /// The caller must ensure `p` points to a valid, dereferenceable position in a null-terminated
 /// string.
-unsafe fn detect_base(p: &mut *const c_char, base: c_int) -> c_int {
+pub(crate) unsafe fn detect_base(p: &mut *const c_char, base: c_int) -> c_int {
     let mut actual_base = base;
 
     if **p as u8 == b'0' {
