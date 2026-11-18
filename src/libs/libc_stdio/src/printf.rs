@@ -5,65 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::format_engine::{
-    format_core,
-    ArgSource,
-    FdWriter,
-};
-use ::core::ffi::VaList;
 use ::sysapi::ffi::{
     c_char,
     c_int,
 };
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-/// File descriptor for standard output.
-const STDOUT_FD: c_int = 1;
-
-//==================================================================================================
-// VaList Adapter
-//==================================================================================================
-
-/// Wraps a [`VaList`] to implement [`ArgSource`].
-struct VaListArgs<'a> {
-    va: VaList<'a>,
-}
-
-impl<'a> ArgSource for VaListArgs<'a> {
-    fn next_int(&mut self) -> c_int {
-        unsafe { self.va.next_arg::<c_int>() }
-    }
-    fn next_uint(&mut self) -> u32 {
-        unsafe { self.va.next_arg::<u32>() }
-    }
-    fn next_long(&mut self) -> i32 {
-        unsafe { self.va.next_arg::<i32>() }
-    }
-    fn next_ulong(&mut self) -> u32 {
-        unsafe { self.va.next_arg::<u32>() }
-    }
-    fn next_longlong(&mut self) -> i64 {
-        unsafe { self.va.next_arg::<i64>() }
-    }
-    fn next_ulonglong(&mut self) -> u64 {
-        unsafe { self.va.next_arg::<u64>() }
-    }
-    fn next_size(&mut self) -> usize {
-        unsafe { self.va.next_arg::<usize>() }
-    }
-    fn next_ptr(&mut self) -> usize {
-        unsafe { self.va.next_arg::<usize>() }
-    }
-    fn next_str(&mut self) -> *const c_char {
-        unsafe { self.va.next_arg::<*const c_char>() }
-    }
-    fn next_double(&mut self) -> f64 {
-        unsafe { self.va.next_arg::<f64>() }
-    }
-}
 
 //==================================================================================================
 // Standalone Functions
@@ -72,8 +17,8 @@ impl<'a> ArgSource for VaListArgs<'a> {
 ///
 /// # Description
 ///
-/// Writes formatted output to standard output. This is a variadic wrapper that creates a
-/// [`VaList`] and delegates to the formatting engine.
+/// Writes formatted output to standard output. This is a variadic wrapper around
+/// [`crate::vprintf::vprintf`].
 ///
 /// # Parameters
 ///
@@ -96,12 +41,6 @@ impl<'a> ArgSource for VaListArgs<'a> {
 ///
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn printf(fmt: *const c_char, args: ...) -> c_int {
-    let mut writer: FdWriter = FdWriter::new(STDOUT_FD);
-    let ap: VaList<'_> = args;
-    let mut va_args: VaListArgs<'_> = VaListArgs { va: ap };
-    let ret: c_int = format_core(&mut writer, fmt, &mut va_args);
-    if ret < 0 {
-        return ret;
-    }
-    writer.result()
+    // SAFETY: forwarding the variadic argument list to vprintf.
+    unsafe { crate::vprintf::vprintf(fmt, args) }
 }
