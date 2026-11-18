@@ -37,7 +37,7 @@ const COS_COEFFS: [f64; 7] = [
 //==================================================================================================
 
 /// Polynomial approximation of sin(x) for |x| <= PI/4.
-fn sin_kernel(x: f64) -> f64 {
+pub(crate) fn sin_kernel(x: f64) -> f64 {
     let x2: f64 = x * x;
     let mut p: f64 = SIN_COEFFS[0];
     let mut i: usize = 1;
@@ -49,7 +49,7 @@ fn sin_kernel(x: f64) -> f64 {
 }
 
 /// Polynomial approximation of cos(x) for |x| <= PI/4.
-fn cos_kernel(x: f64) -> f64 {
+pub(crate) fn cos_kernel(x: f64) -> f64 {
     let x2: f64 = x * x;
     let mut p: f64 = COS_COEFFS[0];
     let mut i: usize = 1;
