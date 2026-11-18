@@ -5,7 +5,14 @@
 // Imports
 //==================================================================================================
 
-use crate::set_errno;
+use crate::{
+    set_errno,
+    strtol::{
+        detect_base,
+        digit_value,
+        is_whitespace,
+    },
+};
 use ::sysapi::{
     errno::{
         EINVAL,
@@ -17,32 +24,6 @@ use ::sysapi::{
         c_longlong,
     },
 };
-
-//==================================================================================================
-// Private Functions
-//==================================================================================================
-
-/// Returns `true` if the given character is an ASCII whitespace character.
-fn is_whitespace(c: c_char) -> bool {
-    let b = c as u8;
-    b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' || b == 0x0b || b == 0x0c
-}
-
-/// Returns the numeric value of a digit character for the given base, or `None` if invalid.
-fn digit_value(c: c_char, base: c_int) -> Option<u8> {
-    let b = c as u8;
-    let val = match b {
-        b'0'..=b'9' => b - b'0',
-        b'a'..=b'z' => b - b'a' + 10,
-        b'A'..=b'Z' => b - b'A' + 10,
-        _ => return None,
-    };
-    if c_int::from(val) < base {
-        Some(val)
-    } else {
-        None
-    }
-}
 
 //==================================================================================================
 // Standalone Functions
@@ -169,34 +150,6 @@ pub unsafe extern "C" fn strtoll(
             }
         },
     }
-}
-
-/// Detects the numeric base from a string prefix and advances the pointer past the prefix.
-///
-/// # Safety
-///
-/// The caller must ensure `p` points to a valid, dereferenceable position in a null-terminated
-/// string.
-unsafe fn detect_base(p: &mut *const c_char, base: c_int) -> c_int {
-    let mut actual_base = base;
-
-    if **p as u8 == b'0' {
-        let next = *p.add(1);
-        if (next as u8 == b'x' || next as u8 == b'X') && (actual_base == 0 || actual_base == 16) {
-            if digit_value(*p.add(2), 16).is_some() {
-                actual_base = 16;
-                *p = p.add(2);
-            } else if actual_base == 0 {
-                actual_base = 8;
-            }
-        } else if actual_base == 0 {
-            actual_base = 8;
-        }
-    } else if actual_base == 0 {
-        actual_base = 10;
-    }
-
-    actual_base
 }
 
 #[cfg(all(test, feature = "std"))]
