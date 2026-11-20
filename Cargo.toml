@@ -232,7 +232,7 @@ nanvix-sandbox-config = { path = "src/libs/nanvix-sandbox-config", default-featu
 nanvix-shim-core = { path = "src/libs/nanvix-shim-core" }
 nanvix-shim-proto = { path = "src/libs/nanvix-shim-proto" }
 nanvix-shim-standalone = { path = "src/libs/nanvix-shim-standalone" }
-nix = { version = "0.31", default-features = false }
+nix = { version = "0.32", default-features = false }
 nanvix-terminal = { path = "src/libs/nanvix-terminal", default-features = false }
 nanvixd = { path = "src/utils/nanvixd", default-features = false }
 no_fail = { path = "src/libs/no_fail", default-features = false }
