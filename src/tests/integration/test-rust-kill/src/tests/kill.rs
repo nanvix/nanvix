@@ -72,6 +72,7 @@ use ::sys::{
         SA_RESTART,
         SA_SIGINFO,
         SIG_BLOCK,
+        SIG_DFL,
         SIG_MAX,
         SIG_SETMASK,
         SIG_UNBLOCK,
@@ -80,6 +81,7 @@ use ::sys::{
         SIGKILL,
         SIGSTOP,
         SIGTERM,
+        SIGTSTP,
         SIGUSR1,
         SIGUSR2,
         SigAction,
@@ -111,6 +113,7 @@ use ::syscall::{
     },
     unistd::bindings,
 };
+use ::syslog::error;
 
 //==================================================================================================
 // Constants
@@ -125,6 +128,9 @@ const CHILD_FAIL: c_int = 111;
 /// terminated by the signal. Surfacing a distinct status turns a missed kill into a loud assertion
 /// failure rather than a silent pass.
 const CHILD_NOT_KILLED: c_int = 112;
+
+/// Exit status proving that a blocked pending signal was observed without terminating the child.
+const PENDING_VERIFIED: c_int = 113;
 
 /// Duration, in seconds, of the timed sleeps that park a thread in an interruptible wait. It is
 /// comfortably longer than the interrupting signal needs to arrive (so the sleep is always
@@ -149,6 +155,16 @@ enum ChildWait {
     /// Block in a long timed `nanosleep()` — an interruptible wait with a pending alarm (the
     /// *interrupted* state, where the signal interrupts the in-progress timed wait).
     TimedSleep,
+}
+
+/// Selects how a child makes a blocked pending default signal deliverable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PendingDefault {
+    Blocked,
+    Unblock,
+    ResetDefault,
+    Suspend,
+    Stop,
 }
 
 //==================================================================================================
@@ -803,6 +819,115 @@ fn test_sigpending_reports_blocked_pending() -> Result<(), Error> {
         "a delivered signal must clear from the pending set (pending={:#x})",
         pending_after
     );
+    Ok(())
+}
+
+/// Queues a blocked default signal, proves it is pending, and exercises its selected delivery path.
+fn pending_default_child(mode: PendingDefault) -> Result<c_int, Error> {
+    let signum: usize = if mode == PendingDefault::Stop {
+        SIGTSTP
+    } else {
+        SIGTERM
+    };
+    let bit: SigSet = 1u64 << (signum - 1);
+    let c_signum: c_int = as_signum(signum)?;
+    // SAFETY: `bit` points to a valid mask; the old-mask output is not requested.
+    unsafe { pm::__kcall_sigprocmask(SIG_BLOCK, &raw const bit, ptr::null_mut()) }?;
+    if mode == PendingDefault::ResetDefault {
+        let caught: SigAction = SigAction {
+            sa_handler: sigusr1_handler_addr(),
+            sa_mask: 0,
+            sa_flags: 0,
+            sa_sigaction: 0,
+        };
+        // SAFETY: `caught` points to a valid action; the old-action output is not requested.
+        unsafe { pm::__kcall_sigaction(c_signum, &raw const caught, ptr::null_mut()) }?;
+    }
+    post_signal(pm::getpid_uncached()?, c_signum);
+    let mut pending: SigSet = 0;
+    // SAFETY: `pending` points to a valid signal set.
+    unsafe { pm::__kcall_sigpending(&raw mut pending) }?;
+    assert!(pending & bit != 0, "blocked default must remain pending (mode={mode:?})");
+    if mode == PendingDefault::Blocked {
+        return Ok(PENDING_VERIFIED);
+    }
+    if mode == PendingDefault::ResetDefault {
+        let default: SigAction = SigAction {
+            sa_handler: SIG_DFL,
+            sa_mask: 0,
+            sa_flags: 0,
+            sa_sigaction: 0,
+        };
+        // SAFETY: `default` points to a valid action; the signal remains blocked.
+        unsafe { pm::__kcall_sigaction(c_signum, &raw const default, ptr::null_mut()) }?;
+        // SAFETY: `pending` points to a valid signal set.
+        unsafe { pm::__kcall_sigpending(&raw mut pending) }?;
+        assert!(pending & bit != 0, "resetting to default must preserve a blocked pending signal");
+    }
+    if mode == PendingDefault::Stop {
+        notify_ready(pm::__kcall_getppid()?)?;
+    }
+    if mode == PendingDefault::Suspend {
+        let mask: SigSet = 0;
+        // SAFETY: `mask` points to a valid temporary mask.
+        let _ = unsafe { pm::__kcall_sigsuspend(&raw const mask) };
+    } else {
+        // SAFETY: `bit` points to a valid mask; the old-mask output is not requested.
+        unsafe { pm::__kcall_sigprocmask(SIG_UNBLOCK, &raw const bit, ptr::null_mut()) }?;
+    }
+    Ok(if mode == PendingDefault::Stop {
+        PENDING_VERIFIED
+    } else {
+        CHILD_NOT_KILLED
+    })
+}
+
+/// Verifies real pending default termination and stop/resume across mask and disposition changes.
+fn test_pending_default_actions() -> Result<(), Error> {
+    for mode in [
+        PendingDefault::Blocked,
+        PendingDefault::Unblock,
+        PendingDefault::ResetDefault,
+        PendingDefault::Suspend,
+        PendingDefault::Stop,
+    ] {
+        let child: pid_t = bindings::fork::fork();
+        if child == 0 {
+            let status: c_int = match pending_default_child(mode) {
+                Ok(status) => status,
+                Err(error) => {
+                    error!("pending-default child failed (mode={mode:?}, error={error:?})");
+                    CHILD_FAIL
+                },
+            };
+            // SAFETY: the child holds no resources requiring cleanup.
+            unsafe { bindings::_exit::_exit(status) };
+        }
+        assert!(child > 0, "fork() failed for pending default (mode={mode:?})");
+        let mut status: c_int = 0;
+        if mode == PendingDefault::Stop {
+            await_ready()?;
+            for _ in 0..STOP_POLL_ATTEMPTS {
+                // SAFETY: `status` points to a valid status buffer.
+                let polled: pid_t =
+                    unsafe { bindings::waitpid::waitpid(child, &raw mut status, WNOHANG) };
+                assert!(polled == 0, "unblocked SIGTSTP must stop the child (ret={polled})");
+            }
+            post_signal(ProcessIdentifier::from(child), as_signum(SIGCONT)?);
+        }
+        // SAFETY: `status` points to a valid status buffer.
+        let reaped: pid_t = unsafe { bindings::waitpid::waitpid(child, &raw mut status, 0) };
+        assert!(reaped == child && wifexited(status), "pending-default child was not reaped");
+        let expected: c_int = if matches!(mode, PendingDefault::Blocked | PendingDefault::Stop) {
+            PENDING_VERIFIED
+        } else {
+            ErrorCode::Interrupted.get()
+        };
+        assert!(
+            wexitstatus(status) == expected,
+            "wrong pending-default exit (mode={mode:?}, status={status:#x}, expected={expected})"
+        );
+    }
     Ok(())
 }
 
@@ -1571,6 +1696,7 @@ pub fn run() -> Result<(), Error> {
     test_sigsuspend_returns_after_handler()?;
     test_sigsuspend_delivers_pending_unblocked_signal()?;
     test_sigpending_reports_blocked_pending()?;
+    test_pending_default_actions()?;
     test_caught_signal_preempts_compute_loop()?;
     test_caught_signal_preempts_compute_loop_at_page_boundary()?;
     test_sigstop_stops_and_sigcont_resumes()?;

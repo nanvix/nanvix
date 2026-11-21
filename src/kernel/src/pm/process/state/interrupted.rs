@@ -87,6 +87,20 @@ impl InterruptedProcess {
         &mut self.state
     }
 
+    /// Visits the interrupted and sleeping threads, excluding zombies.
+    pub(super) fn for_each_live_thread_mut(&mut self, mut visit: impl FnMut(ThreadRefMut<'_>)) {
+        for thread in self.interrupted_threads.iter_mut() {
+            visit(ThreadRefMut::Interrupted(thread));
+        }
+        for thread in self
+            .sleeping_threads
+            .iter_mut()
+            .flat_map(|threads| threads.iter_mut())
+        {
+            visit(ThreadRefMut::Sleeping(thread));
+        }
+    }
+
     pub fn resume(mut self) -> RunnableProcess {
         let (interrupted_threads, next_thread): (VecDeque<InterruptedThread>, InterruptedThread) =
             self.interrupted_threads.pop_front();

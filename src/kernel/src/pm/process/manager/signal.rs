@@ -6,8 +6,10 @@
 //!
 //! Glue between the process manager and the architecture-neutral [`sigframe`] logic. At every
 //! return-to-user boundary — the end of a kernel call, and the return from a hardware interrupt or
-//! a CPU exception — the kernel checks the running process for a deliverable caught signal and, if
-//! one is found, redirects the interrupted thread through its user-space handler by:
+//! a CPU exception — the kernel reconciles pending default actions with the live threads' masks.
+//! Ignored signals are discarded even while blocked; deliverable default actions terminate or stop
+//! the process without requiring a user-space restorer. A caught signal redirects the interrupted
+//! thread through its user-space handler by:
 //!
 //! 1. reading the interrupted user context, either off the top of the thread's kernel stack (the
 //!    hardware trap frame plus the registers preserved by the kernel-call entry stub) or from the
@@ -79,6 +81,7 @@ use crate::{
                 SignalDisposition,
                 UNBLOCKABLE,
             },
+            ProcessRefMut,
         },
         KcallRestart,
         ORDER,
@@ -114,6 +117,8 @@ pub enum SignalDeliveryOutcome {
     None,
     /// A signal frame was built and the thread was redirected to its handler.
     Delivered,
+    /// A pending signal stopped the process; the caller must yield and retry after it is continued.
+    Stopped,
     /// A pending signal has a fatal default action, or its frame could not be built safely.
     /// The caller must terminate the process.
     Escalate,
@@ -267,6 +272,54 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Discards ignored pending signals and consumes deliverable default actions for the
+    /// running process. Process-directed signals may act when any live thread unblocks them;
+    /// thread-directed signals must be unblocked by the running target thread.
+    ///
+    /// # Returns
+    ///
+    /// The terminating or stopping default action, or [`None`] when none remains. A stop marks the
+    /// process stopped; the caller must yield outside the process-manager borrow.
+    ///
+    pub fn deliver_pending_default_signal(&mut self) -> Option<DefaultAction> {
+        let pid: ProcessIdentifier = self.get_pid();
+        let tid: ThreadIdentifier = self.get_tid();
+        let (blocked, mut thread_pending): (u64, u64) = {
+            let state = self.get_running_mut().running_mut().thread_state_mut();
+            (state.blocked(), state.pending())
+        };
+        let mut process: ProcessRefMut = ProcessRefMut::Running(self.get_running_mut());
+        let mut stopped: bool = false;
+        while let Some((signum, action)) = process.next_pending_default(blocked, thread_pending) {
+            thread_pending &= !(1u64 << (signum - 1));
+            process.state_mut().signals_mut().clear_pending(signum);
+            if let Some(mut thread) = process.find_thread_mut(tid) {
+                thread.thread_state_mut().clear_pending(signum);
+            }
+            match action {
+                DefaultAction::Stop => {
+                    process.state_mut().set_stopped(true);
+                    trace!("stopped by pending signal (pid={pid:?}, signum={signum})");
+                    stopped = true;
+                },
+                DefaultAction::Terminate | DefaultAction::Core => {
+                    if action == DefaultAction::Core {
+                        info!(
+                            "terminated by signal default core action (target={pid:?}, \
+                             signum={signum})"
+                        );
+                    }
+                    return Some(action);
+                },
+                DefaultAction::Ignore | DefaultAction::Continue => {},
+            }
+        }
+        stopped.then_some(DefaultAction::Stop)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Records the user-space signal-return trampoline (restorer) for a process.
     ///
     /// # Parameters
@@ -311,7 +364,7 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Evaluates and, if warranted, performs delivery of a pending caught signal to the running
+    /// Evaluates and, if warranted, performs delivery of a pending signal to the running
     /// thread at the kernel-call return-to-user boundary.
     ///
     /// # Parameters
@@ -351,18 +404,25 @@ impl ProcessManager {
             return SignalDeliveryOutcome::None;
         }
 
-        self.deliver_async_signal(
+        let outcome: SignalDeliveryOutcome = self.deliver_async_signal(
             InterruptedContext::KernelCall { esp0, result },
             blocked,
             thread_pending,
             restart,
-        )
+        );
+        if outcome == SignalDeliveryOutcome::Stopped {
+            // A stop defers this boundary, so preserve SA_RESTART until delivery is retried.
+            if let Some(restart) = restart {
+                self.set_running_thread_restart(restart);
+            }
+        }
+        outcome
     }
 
     ///
     /// # Description
     ///
-    /// Evaluates and, if warranted, performs delivery of a pending caught signal to the running
+    /// Evaluates and, if warranted, performs delivery of a pending signal to the running
     /// thread at a hardware-interrupt or exception return-to-user boundary.
     ///
     /// This is what delivers a signal to a thread that makes no kernel calls: the timer interrupt
@@ -429,6 +489,21 @@ impl ProcessManager {
         thread_pending: u64,
         restart: Option<KcallRestart>,
     ) -> SignalDeliveryOutcome {
+        if (self.get_running().state().signals().pending() | thread_pending) == 0
+            && !self.get_running().state().is_stopped()
+        {
+            return SignalDeliveryOutcome::None;
+        }
+        match self.deliver_pending_default_signal() {
+            Some(DefaultAction::Terminate | DefaultAction::Core) => {
+                return SignalDeliveryOutcome::Escalate;
+            },
+            Some(DefaultAction::Stop) => return SignalDeliveryOutcome::Stopped,
+            Some(DefaultAction::Ignore | DefaultAction::Continue) | None => {},
+        }
+        if self.get_running().state().is_stopped() {
+            return SignalDeliveryOutcome::Stopped;
+        }
         let pid: ProcessIdentifier = self.get_pid();
         let tid: ThreadIdentifier = self.get_tid();
         let owner_tid: ThreadIdentifier = ThreadIdentifier::from(FPU_OWNER_TID.load(ORDER));
@@ -516,6 +591,9 @@ impl ProcessManager {
             if (sa_flags & SA_RESETHAND) != 0 {
                 signals.set_disposition(signum, SignalDisposition::Default);
             }
+        }
+        if (sa_flags & SA_RESETHAND) != 0 && default_action(signum) == DefaultAction::Ignore {
+            ProcessRefMut::Running(self.get_running_mut()).discard_pending(signum);
         }
 
         // Redirect the interrupted thread into its handler. The signal number is placed in the
@@ -642,6 +720,9 @@ impl ProcessManager {
             if (sa_flags & SA_RESETHAND) != 0 {
                 signals.set_disposition(signum, SignalDisposition::Default);
             }
+        }
+        if (sa_flags & SA_RESETHAND) != 0 && default_action(signum) == DefaultAction::Ignore {
+            ProcessRefMut::Running(self.get_running_mut()).discard_pending(signum);
         }
 
         SyncSignalOutcome::Delivered {

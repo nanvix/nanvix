@@ -104,8 +104,6 @@ pub enum SignalDisposition {
 ///
 /// Per-process signal control block.
 ///
-// The disposition table is read and written by `sigaction()`; the remaining fields are inert
-// plumbing read by later phases of the signals effort.
 #[derive(Debug)]
 pub struct SignalControl {
     /// Disposition for each of the 64 signals, indexed by `signum - 1`.
@@ -251,7 +249,7 @@ pub fn default_action(signum: usize) -> DefaultAction {
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KillOutcome {
-    /// The signal was fully handled in-kernel: it was posted and a candidate thread woken, it was
+    /// The signal needs no further kernel-call work: it was queued for later delivery, it was
     /// discarded, only the existence check was performed, or the target was terminated via the
     /// cross-process path.
     Done,
@@ -306,6 +304,12 @@ pub fn exception_to_signal(vector: u32) -> Option<usize> {
 //==================================================================================================
 
 impl SignalDisposition {
+    /// Returns whether this disposition discards signal `signum`, even while it is blocked.
+    pub fn is_ignored(&self, signum: usize) -> bool {
+        matches!(self, Self::Ignore)
+            || (matches!(self, Self::Default) && default_action(signum) == DefaultAction::Ignore)
+    }
+
     ///
     /// # Description
     ///
@@ -364,6 +368,7 @@ impl SignalControl {
     ///
     /// Installs `disposition` for signal `signum`, returning the disposition it replaced.
     /// Installing [`SignalDisposition::Ignore`] discards its process-directed pending instance.
+    /// The caller must discard thread-directed instances and signals newly ignored by default.
     ///
     /// # Parameters
     ///

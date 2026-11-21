@@ -10,6 +10,7 @@ use crate::{
     mm::Vmem,
     pm::{
         self,
+        process::state::signal::DefaultAction,
         InterruptReason,
         ProcessManager,
         SleepError,
@@ -32,6 +33,27 @@ use ::sys::{
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+fn terminate_for_signal() -> KcallResult {
+    // SAFETY: the caller is a user process, interrupts are disabled, and no manager borrow is held.
+    match unsafe { ProcessManager::exit(ErrorCode::Interrupted.into()) } {
+        Ok(never) => never,
+        Err(error) => {
+            error!("failed to terminate during sigsuspend (error={error:?})");
+            KcallResult::Error(error.code.into())
+        },
+    }
+}
+
+fn fail_sigsuspend(tid: ThreadIdentifier, error: Error) -> KcallResult {
+    error!("sigsuspend failed (error={error:?})");
+    // SAFETY: access is synchronized and no other process-manager borrow is held.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+    if let Err(restore_error) = pm.restore_sigsuspend_mask(tid) {
+        error!("failed to restore mask after sigsuspend failure (error={restore_error:?})");
+    }
+    KcallResult::Error(error.code.into())
+}
 
 ///
 /// # Description
@@ -88,14 +110,11 @@ pub fn sigsuspend(
     };
 
     // Atomically install the temporary mask, saving the current one for restoration by sigreturn().
-    // If the new mask makes an already-pending caught signal deliverable, do not sleep: return
-    // EINTR immediately and let the dispatcher's return-to-user checkpoint deliver the handler.
     {
         // SAFETY: the process manager is initialized and access is synchronized.
         let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
         match pm.install_sigsuspend_mask(caller_pid, caller_tid, mask) {
-            Ok(true) => return KcallResult::Error(ErrorCode::Interrupted.into()),
-            Ok(false) => {},
+            Ok(()) => {},
             Err(error) => {
                 error!("{error:?}");
                 return KcallResult::Error(error.code.into());
@@ -108,6 +127,34 @@ pub fn sigsuspend(
     // EINTR (its mask reinstated by sigreturn() once the handler runs); a fatal signal tears the
     // process down.
     loop {
+        // The temporary mask can make a previously blocked default action deliverable. A stop
+        // yields without completing sigsuspend; after SIGCONT, keep waiting for a caught signal.
+        let default: Option<DefaultAction> = {
+            // SAFETY: access is synchronized and no other process-manager borrow is held.
+            let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+            pm.deliver_pending_default_signal()
+        };
+        match default {
+            Some(DefaultAction::Terminate | DefaultAction::Core) => return terminate_for_signal(),
+            Some(DefaultAction::Stop) => {
+                // SAFETY: no manager borrow is held; interrupts are disabled in privileged mode.
+                if let Err(error) = unsafe { ProcessManager::giveup() } {
+                    return fail_sigsuspend(caller_tid, error);
+                }
+                continue;
+            },
+            Some(DefaultAction::Ignore | DefaultAction::Continue) | None => {},
+        }
+        {
+            // SAFETY: access is synchronized and no other process-manager borrow is held.
+            let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+            match pm.has_pending_caught_signal(caller_pid, caller_tid) {
+                Ok(true) => return KcallResult::Error(ErrorCode::Interrupted.into()),
+                Ok(false) => {},
+                Err(error) => return fail_sigsuspend(caller_tid, error),
+            }
+        }
+
         // SAFETY: no borrow of the process manager is held, the calling thread is not the kernel,
         // access to the process manager is synchronized, and the processor runs with interrupts
         // disabled in privileged mode.
@@ -115,33 +162,12 @@ pub fn sigsuspend(
             // Spurious or job-control wakeup: keep waiting.
             Ok(()) => continue,
             Err(SleepError::Interrupted(InterruptReason::Killed)) => {
-                // The process is being terminated. Complete the termination via exit(), which
-                // performs a context switch and never returns.
-                // SAFETY: the calling process is not the kernel and no borrow is held.
-                let error: Error =
-                    unsafe { ProcessManager::exit(ErrorCode::Interrupted.into()).unwrap_err() };
-                panic!("failed to exit() (error={error:?})");
+                return terminate_for_signal();
             },
-            // A caught signal (or, defensively, any other interruption) ends the suspension with
+            // Re-evaluate caught signals before ending the suspension with
             // EINTR; the pre-suspend mask is reinstated by sigreturn() after the handler runs.
-            Err(SleepError::Interrupted(_)) => {
-                return KcallResult::Error(ErrorCode::Interrupted.into());
-            },
-            Err(SleepError::Generic(error)) => {
-                error!("sigsuspend failed to sleep: {error:?}");
-                // The suspension failed before any handler ran, so sigreturn() will not restore the
-                // temporary mask. Reinstate the pre-suspend mask directly so the failed call leaves
-                // the thread's mask unchanged, as POSIX requires.
-                // SAFETY: no borrow of the process manager is held and access is synchronized.
-                let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
-                if let Err(restore_error) = pm.restore_sigsuspend_mask(caller_tid) {
-                    error!(
-                        "failed to restore signal mask after sigsuspend failure \
-                         (error={restore_error:?})"
-                    );
-                }
-                return KcallResult::Error(error.code.into());
-            },
+            Err(SleepError::Interrupted(_)) => continue,
+            Err(SleepError::Generic(error)) => return fail_sigsuspend(caller_tid, error),
         }
     }
 }
