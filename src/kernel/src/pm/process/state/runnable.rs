@@ -382,7 +382,8 @@ impl RunnableProcess {
     ///
     pub fn wakeup_expired_alarms(&mut self, now: SystemTime) {
         let alarm_bit: u64 = 1u64 << (::sys::pm::SIGALRM - 1);
-        let mut wake_for_signal: bool = self.state.signals_mut().expire_alarm(now)
+        self.state.signals_mut().expire_alarm(now);
+        let mut wake_for_signal: bool = self.state.signals().pending() & alarm_bit != 0
             && !self
                 .ready_threads
                 .iter()

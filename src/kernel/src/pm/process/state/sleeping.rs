@@ -184,7 +184,8 @@ impl SleepingProcess {
     }
 
     pub fn wakeup_alarm(mut self, now: SystemTime) -> Result<InterruptedProcess, SleepingProcess> {
-        if self.state.signals_mut().expire_alarm(now) {
+        self.state.signals_mut().expire_alarm(now);
+        if self.state.signals().pending() & (1u64 << (::sys::pm::SIGALRM - 1)) != 0 {
             if let Some(tid) = self.candidate_tid_for(::sys::pm::SIGALRM) {
                 return self.interrupt_thread(tid, InterruptReason::Signaled);
             }

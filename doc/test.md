@@ -67,8 +67,9 @@ snapshot-save-exit test are Linux-only; HTTP and terminal tests have no host res
 The POSIX C suites use `test/test-posix.toml` and `test/test-posix-windows.toml`.
 The `posix/test-c-alarm` suite covers one-shot `SIGALRM` delivery, timer replacement and
 cancellation with rounded remaining time, sleep interruption, pending blocked signals, ignored
-signals, fatal default delivery after unblocking, exclusion of alarms from `fork()`, and delivery
-to an unmasked sleeping thread while its masked sibling remains runnable.
+signals, fatal default delivery after unblocking (including an already pending alarm unmasked by
+`sigsuspend()`), exclusion of alarms from `fork()`, and delivery to an unmasked sleeping thread
+while its masked sibling remains runnable.
 Kernel signal-state tests also check that the alarm deadline survives `exec()`.
 The `posix/test-c-stdio` suite covers formatted input from files, redirected standard input,
 and pipes: integer, floating-point, string, character, scanset, and `%n` conversions, suppression,

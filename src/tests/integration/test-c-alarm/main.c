@@ -121,7 +121,16 @@ static void test_ignored_alarm(void)
     assert(sigaction(SIGALRM, &previous, NULL) == 0);
 }
 
-static void test_blocked_default_alarm(void)
+static void *suspend_pending_alarm(void *arg)
+{
+    (void)arg;
+    sigset_t mask;
+    assert(sigemptyset(&mask) == 0);
+    sigsuspend(&mask);
+    _exit(0);
+}
+
+static void test_blocked_default_alarm(int suspend_mode)
 {
     int pipefd[2];
     assert(pipe(pipefd) == 0);
@@ -144,6 +153,16 @@ static void test_blocked_default_alarm(void)
         assert(sigismember(&pending, SIGALRM) == 1);
         const unsigned char marker = 0x5a;
         assert(write(pipefd[1], &marker, sizeof(marker)) == sizeof(marker));
+        if (suspend_mode == 1) {
+            suspend_pending_alarm(NULL);
+        } else if (suspend_mode == 2) {
+            pthread_t thread;
+            assert(pthread_create(&thread, NULL, suspend_pending_alarm, NULL) == 0);
+            // Keep a masked sibling runnable after the pending signal is unmasked by sigsuspend.
+            for (;;) {
+                assert(sched_yield() == 0);
+            }
+        }
         assert(sigprocmask(SIG_UNBLOCK, &blocked, NULL) == 0);
         _exit(0);
     }
@@ -153,7 +172,15 @@ static void test_blocked_default_alarm(void)
     assert(marker == 0x5a);
     assert(close(pipefd[0]) == 0);
     int status = 0;
-    assert(waitpid(child, &status, 0) == child);
+    pid_t reaped = 0;
+    for (int retry = 0; retry < 100 && reaped == 0; retry++) {
+        reaped = waitpid(child, &status, WNOHANG);
+        assert(reaped >= 0);
+        if (reaped == 0) {
+            delay_ms(50);
+        }
+    }
+    assert(reaped == child);
     // Nanvix reports the kernel's fatal-signal termination as an EINTR exit status.
     assert(WIFEXITED(status) && WEXITSTATUS(status) == EINTR);
 }
@@ -211,7 +238,9 @@ int main(void)
     test_pending_alarm();
     test_fork_does_not_inherit_alarm();
     test_ignored_alarm();
-    test_blocked_default_alarm();
+    test_blocked_default_alarm(0);
+    test_blocked_default_alarm(1);
+    test_blocked_default_alarm(2);
     test_masked_runnable_sibling();
     return (0);
 }
