@@ -9,23 +9,14 @@ use crate::{
     inttypes::uintmax_t,
     strtoimax::{
         digit_value,
-        is_whitespace,
+        parse_prefix,
+        Prefix,
     },
 };
 use ::sysapi::ffi::{
     c_char,
     c_int,
 };
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-const CHAR_ZERO: i64 = 0x30;
-const CHAR_UPPER_X: i64 = 0x58;
-const CHAR_LOWER_X: i64 = 0x78;
-const CHAR_PLUS: i64 = 0x2B;
-const CHAR_MINUS: i64 = 0x2D;
 
 //==================================================================================================
 // Public Functions
@@ -51,68 +42,12 @@ pub unsafe extern "C" fn strtoumax(
 ) -> uintmax_t {
     debug_assert!(!nptr.is_null());
 
-    // Reject invalid bases per the C contract: `base` must be 0 (auto-detect) or in 2..=36.
-    // An invalid base performs no conversion: POSIX requires `errno` to be set to `EINVAL`, so set
-    // it, set `*endptr` to `nptr`, and return 0.
-    let requested_base: i64 = i64::from(base);
-    if requested_base != 0 && !(2..=36).contains(&requested_base) {
-        // SAFETY: `__errno_location()` returns a valid pointer to thread-local `errno`.
-        *::sysapi::errno::__errno_location() = ::sysapi::errno::EINVAL;
-        if !endptr.is_null() {
-            *endptr = nptr as *mut c_char;
-        }
+    let Some(prefix): Option<Prefix> = parse_prefix(nptr, endptr, base) else {
         return 0;
-    }
-
-    let mut idx: usize = 0;
-
-    // Skip leading whitespace.
-    loop {
-        let c = i64::from(*nptr.add(idx));
-        if !is_whitespace(c) {
-            break;
-        }
-        idx += 1;
-    }
-
-    // Handle optional sign.
-    let negative = {
-        let c = i64::from(*nptr.add(idx));
-        if c == CHAR_MINUS {
-            idx += 1;
-            true
-        } else {
-            if c == CHAR_PLUS {
-                idx += 1;
-            }
-            false
-        }
     };
-
-    // Determine effective base.
-    let mut effective_base: i64 = requested_base;
-    let c = i64::from(*nptr.add(idx));
-    if c == CHAR_ZERO {
-        let next = i64::from(*nptr.add(idx + 1));
-        let next_is_x = next == CHAR_LOWER_X || next == CHAR_UPPER_X;
-        // Only honor a `0x`/`0X` prefix when it is immediately followed by at least one
-        // hexadecimal digit. Otherwise the leading `0` is itself the (only) digit and parsing
-        // must stop at `x`, leaving `endptr` pointing at it (e.g. "0x" or "0xG").
-        let prefix_has_hex_digit = next_is_x && {
-            // SAFETY: `next` is `x`/`X` (non-null), so reading `idx + 2` stays within the string.
-            let after = i64::from(*nptr.add(idx + 2));
-            matches!(digit_value(after), Some(d) if d < 16)
-        };
-        if prefix_has_hex_digit && (effective_base == 0 || effective_base == 16) {
-            effective_base = 16;
-            idx += 2;
-        } else if effective_base == 0 {
-            effective_base = 8;
-            // Don't advance past '0' — let the digit loop parse it.
-        }
-    } else if effective_base == 0 {
-        effective_base = 10;
-    }
+    let mut idx: usize = prefix.idx;
+    let negative: bool = prefix.negative;
+    let effective_base: i64 = prefix.base;
 
     // Convert the effective base to u64 for accumulation.
     let base_u64: u64 = match u64::try_from(effective_base) {
