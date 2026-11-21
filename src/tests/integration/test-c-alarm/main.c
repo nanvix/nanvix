@@ -130,6 +130,34 @@ static void *suspend_pending_alarm(void *arg)
     _exit(0);
 }
 
+static void test_ignore_pending_alarm(void)
+{
+    sigset_t blocked;
+    sigset_t old_mask;
+    sigset_t pending;
+    assert(sigemptyset(&blocked) == 0);
+    assert(sigaddset(&blocked, SIGALRM) == 0);
+    assert(sigprocmask(SIG_BLOCK, &blocked, &old_mask) == 0);
+    assert(alarm(1) == 0);
+    delay_ms(1200);
+    assert(sigpending(&pending) == 0);
+    assert(sigismember(&pending, SIGALRM) == 1);
+    struct sigaction ignored = {0};
+    struct sigaction previous;
+    ignored.sa_handler = SIG_IGN;
+    assert(sigemptyset(&ignored.sa_mask) == 0);
+    assert(sigaction(SIGALRM, &ignored, &previous) == 0);
+    assert(sigpending(&pending) == 0);
+    assert(sigismember(&pending, SIGALRM) == 0);
+    assert(sigprocmask(SIG_SETMASK, &old_mask, NULL) == 0);
+    struct timespec delay = {.tv_nsec = 100000000L};
+    assert(nanosleep(&delay, NULL) == 0);
+    assert(nanosleep(&delay, NULL) == 0);
+    assert(alarm_count == 2);
+    assert(alarm(0) == 0);
+    assert(sigaction(SIGALRM, &previous, NULL) == 0);
+}
+
 static void test_blocked_default_alarm(int suspend_mode)
 {
     int pipefd[2];
@@ -238,6 +266,7 @@ int main(void)
     test_pending_alarm();
     test_fork_does_not_inherit_alarm();
     test_ignored_alarm();
+    test_ignore_pending_alarm();
     test_blocked_default_alarm(0);
     test_blocked_default_alarm(1);
     test_blocked_default_alarm(2);

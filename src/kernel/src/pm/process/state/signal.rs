@@ -363,6 +363,7 @@ impl SignalControl {
     /// # Description
     ///
     /// Installs `disposition` for signal `signum`, returning the disposition it replaced.
+    /// Installing [`SignalDisposition::Ignore`] discards its process-directed pending instance.
     ///
     /// # Parameters
     ///
@@ -382,7 +383,11 @@ impl SignalControl {
         let idx: usize = signum.wrapping_sub(1);
         let slot: &mut SignalDisposition =
             self.dispositions.get_mut(idx / 32)?.get_mut(idx % 32)?;
-        Some(::core::mem::replace(slot, disposition))
+        let previous: SignalDisposition = ::core::mem::replace(slot, disposition);
+        if matches!(slot, SignalDisposition::Ignore) {
+            self.pending &= !(1u64 << idx);
+        }
+        Some(previous)
     }
 
     ///
