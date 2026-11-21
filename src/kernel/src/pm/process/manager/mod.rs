@@ -834,7 +834,8 @@ impl ProcessManager {
     /// Gets and/or sets the disposition of a signal for a target process.
     ///
     /// The previous disposition is always captured (for the `oldact` return) before the new
-    /// disposition, if any, is installed.
+    /// disposition, if any, is installed. Newly ignored signals are discarded from all pending
+    /// sets, even while blocked. Other pending signals are re-evaluated at delivery checkpoints.
     ///
     /// # Parameters
     ///
@@ -858,30 +859,40 @@ impl ProcessManager {
         signum: usize,
         new: Option<SignalDisposition>,
     ) -> Result<SigAction, Error> {
-        // Search for the process across all states.
-        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
-        let signals: &mut SignalControl = process.state_mut().signals_mut();
-
-        // Capture the previous disposition for the `oldact` return before installing the new one.
-        let old: SigAction = match signals.disposition(signum) {
-            Some(disposition) => disposition.to_sigaction(),
-            None => {
-                let reason: &str = "invalid signal number";
-                error!("{reason} (pid={pid:?}, signum={signum})");
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
-            },
-        };
-
-        // Install the new disposition, if one was requested.
-        if let Some(disposition) = new {
-            if signals.set_disposition(signum, disposition).is_none() {
-                // Unreachable: `disposition()` above already validated `signum`.
-                let reason: &str = "invalid signal number";
-                error!("{reason} (pid={pid:?}, signum={signum})");
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        let (old, pending): (SigAction, bool) = {
+            let mut process: ProcessRefMut = self.find_process_mut(pid)?;
+            let signals: &mut SignalControl = process.state_mut().signals_mut();
+            let old: SigAction = match signals.disposition(signum) {
+                Some(disposition) => disposition.to_sigaction(),
+                None => {
+                    let reason: &str = "invalid signal number";
+                    error!("{reason} (pid={pid:?}, signum={signum})");
+                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                },
+            };
+            let mut pending: bool = false;
+            if let Some(disposition) = new {
+                let ignored: bool = disposition.is_ignored(signum);
+                if signals.set_disposition(signum, disposition).is_none() {
+                    let reason: &str = "invalid signal number";
+                    error!("{reason} (pid={pid:?}, signum={signum})");
+                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                }
+                if ignored {
+                    process.discard_pending(signum);
+                } else {
+                    let bit: SigSet = 1u64 << (signum - 1);
+                    pending = (signals.pending() & bit) != 0;
+                    process.for_each_live_thread_mut(|mut thread| {
+                        pending |= (thread.thread_state_mut().pending() & bit) != 0;
+                    });
+                }
             }
+            (old, pending)
+        };
+        if pending {
+            self.interrupt_signal_candidate(pid, signum);
         }
-
         Ok(old)
     }
 
@@ -893,6 +904,7 @@ impl ProcessManager {
     /// The previous mask is always captured (for the `oldset` return) before the new mask, if any,
     /// is installed. Signals that can never be blocked (`SIGKILL`/`SIGSTOP`) are silently cleared
     /// from the resulting mask.
+    /// Pending signals, including default actions, are re-evaluated at the return-to-user boundary.
     ///
     /// # Parameters
     ///
@@ -977,9 +989,8 @@ impl ProcessManager {
     /// The previous mask is saved so that `sigreturn()` restores it after the interrupting handler
     /// runs, matching the POSIX requirement that `sigsuspend()` leave the mask unchanged on return.
     /// Signals that can never be blocked (`SIGKILL`/`SIGSTOP`) are cleared from the installed mask.
-    /// The return value reports whether an already-pending caught signal is now deliverable under
-    /// the temporary mask; in that case `sigsuspend()` must return `EINTR` immediately so the
-    /// normal return-to-user checkpoint can deliver it without sleeping forever.
+    /// The caller must evaluate pending default actions and caught signals under the temporary mask
+    /// before sleeping.
     ///
     /// # Parameters
     ///
@@ -988,15 +999,14 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// Upon success, `true` is returned when a caught pending signal is deliverable under the
-    /// temporary mask. Upon failure, an error is returned instead.
+    /// Upon success, empty is returned. Upon failure, an error is returned instead.
     ///
     pub fn install_sigsuspend_mask(
         &mut self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
         mask: SigSet,
-    ) -> Result<bool, Error> {
+    ) -> Result<(), Error> {
         self.find_process(pid)?;
 
         let installed: SigSet = mask & !UNBLOCKABLE;
@@ -1006,9 +1016,23 @@ impl ProcessManager {
         state.set_saved_blocked(Some(previous));
         state.set_blocked(installed);
 
-        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
-        let signals: &mut SignalControl = process.state_mut().signals_mut();
-        let mut deliverable: SigSet = signals.pending() & !installed;
+        Ok(())
+    }
+
+    /// Reports whether a caught signal is pending and unblocked for the specified thread.
+    pub fn has_pending_caught_signal(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<bool, Error> {
+        let (blocked, thread_pending): (SigSet, SigSet) = {
+            let mut thread: ThreadRefMut = self.find_thread_mut(tid)?;
+            let state = thread.thread_state_mut();
+            (state.blocked(), state.pending())
+        };
+        let process: ProcessRef = self.find_process(pid)?;
+        let signals: &SignalControl = process.state().signals();
+        let mut deliverable: SigSet = (signals.pending() | thread_pending) & !blocked;
         while deliverable != 0 {
             let signum: usize = (deliverable.trailing_zeros() as usize) + 1;
             if let Some(SignalDisposition::Handler(_)) = signals.disposition(signum) {
@@ -1024,7 +1048,8 @@ impl ProcessManager {
     /// # Description
     ///
     /// Restores a rendezvous caller's blocked-signal mask after its pending push or pull is
-    /// registered, and reports whether a caught pending signal became deliverable.
+    /// registered, and reports whether a caught or fatal pending signal became deliverable.
+    /// Pending default stops are applied without interrupting the rendezvous.
     ///
     /// # Parameters
     ///
@@ -1034,7 +1059,7 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// Upon success, `true` is returned when a caught pending signal is deliverable under the
+    /// Upon success, `true` is returned when a caught or fatal pending signal is deliverable under the
     /// restored mask. Otherwise, `false` is returned.
     ///
     /// # Errors
@@ -1050,25 +1075,33 @@ impl ProcessManager {
         self.find_process(pid)?;
 
         let installed: SigSet = mask & !UNBLOCKABLE;
-        let thread_pending: SigSet = {
+        let mut thread_pending: SigSet = {
             let mut thread: ThreadRefMut = self.find_thread_mut(tid)?;
             let state = thread.thread_state_mut();
             state.set_blocked(installed);
             state.pending()
         };
-
-        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
-        let signals: &mut SignalControl = process.state_mut().signals_mut();
-        let mut deliverable: SigSet = (signals.pending() | thread_pending) & !installed;
-        while deliverable != 0 {
-            let signum: usize = (deliverable.trailing_zeros() as usize) + 1;
-            if let Some(SignalDisposition::Handler(_)) = signals.disposition(signum) {
-                return Ok(true);
+        {
+            let mut process: ProcessRefMut = self.find_process_mut(pid)?;
+            while let Some((signum, action)) =
+                process.next_pending_default(installed, thread_pending)
+            {
+                if matches!(action, DefaultAction::Terminate | DefaultAction::Core) {
+                    // Leave the fatal signal pending for the return-to-user checkpoint after the
+                    // rendezvous caller removes its registered request.
+                    return Ok(true);
+                }
+                thread_pending &= !(1u64 << (signum - 1));
+                process.state_mut().signals_mut().clear_pending(signum);
+                if let Some(mut thread) = process.find_thread_mut(tid) {
+                    thread.thread_state_mut().clear_pending(signum);
+                }
+                if action == DefaultAction::Stop {
+                    process.state_mut().set_stopped(true);
+                }
             }
-            deliverable &= deliverable - 1;
         }
-
-        Ok(false)
+        self.has_pending_caught_signal(pid, tid)
     }
 
     ///
@@ -1117,7 +1150,8 @@ impl ProcessManager {
     /// `exit()` performs a context switch and must run outside the process manager). `SIGKILL` is
     /// unconditional and bypasses disposition and mask checks. A caught (handler) signal is posted
     /// and a candidate thread is woken so that delivery is evaluated at its return-to-user
-    /// checkpoint.
+    /// checkpoint. Blockable default terminate, core, and stop signals stay pending while every
+    /// live thread blocks them, and take their default action once a thread permits delivery.
     ///
     /// # Parameters
     ///
@@ -1166,17 +1200,36 @@ impl ProcessManager {
             return self.kill_terminate(caller, target);
         }
 
+        // Job-control cancellation happens at generation, independently of masks and dispositions.
+        if signum == SIGCONT {
+            self.continue_process(target)?;
+        } else if matches!(signum, SIGSTOP | SIGTSTP | SIGTTIN | SIGTTOU) {
+            self.find_process_mut(target)?.discard_pending(SIGCONT);
+        }
+
         // Resolve the effect of the signal from the target's disposition, posting it to the pending
         // set when delivery must be deferred. The borrow of the process manager is dropped before
         // any termination, interruption, or wakeup so those operations can re-borrow it.
         let action: PostAction = {
             let mut process: ProcessRefMut = self.find_process_mut(target)?;
+            let blocked: SigSet = process.blocked_by_all() & !UNBLOCKABLE;
+            let bit: SigSet = 1u64 << (signum - 1);
             let signals: &mut SignalControl = process.state_mut().signals_mut();
             match signals.disposition(signum) {
                 Some(SignalDisposition::Ignore) => PostAction::None,
                 Some(SignalDisposition::Handler(_)) => {
                     signals.post(signum);
                     PostAction::Interrupt
+                },
+                Some(SignalDisposition::Default)
+                    if (blocked & bit) != 0
+                        && matches!(
+                            default_action(signum),
+                            DefaultAction::Terminate | DefaultAction::Core | DefaultAction::Stop
+                        ) =>
+                {
+                    signals.post(signum);
+                    PostAction::None
                 },
                 Some(SignalDisposition::Default) => match default_action(signum) {
                     DefaultAction::Terminate => PostAction::Terminate,
@@ -1204,18 +1257,13 @@ impl ProcessManager {
             }
         };
 
-        // SIGCONT's continue effect is unconditional (POSIX): it resumes a stopped target
-        // regardless of the target's disposition, so it is applied here rather than only on the
-        // default path. An installed handler still runs — that delivery is driven by the
-        // disposition-derived action below.
-        if signum == SIGCONT {
-            self.continue_process(target)?;
-        }
-
         match action {
             PostAction::Terminate => return self.kill_terminate(caller, target),
             PostAction::Interrupt => self.interrupt_signal_candidate(target, signum),
-            PostAction::Stop => self.stop_process(target)?,
+            PostAction::Stop => {
+                self.find_process_mut(target)?.discard_pending(signum);
+                self.stop_process(target)?;
+            },
             PostAction::None => {},
         }
         Ok(KillOutcome::Done)
@@ -1259,8 +1307,7 @@ impl ProcessManager {
     /// The process is marked stopped, which makes the scheduler skip it — none of its threads run —
     /// regardless of whether they are currently ready, running, suspended, or interrupted. The
     /// threads keep their underlying state, so a later `SIGCONT` resumes them from where they were.
-    /// Any pending `SIGCONT` is discarded, mirroring the POSIX rule that a stop supersedes a
-    /// not-yet-acted-upon continue.
+    /// The posting path has already discarded pending `SIGCONT` instances at generation.
     ///
     /// The target is never the running process here: cross-process posting is relayed through the
     /// process-manager daemon (which is the running process during the kernel call). A process that
@@ -1281,8 +1328,6 @@ impl ProcessManager {
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
-        // A stop discards a pending continue and vice versa.
-        process.state_mut().signals_mut().clear_pending(SIGCONT);
         process.state_mut().set_stopped(true);
         trace!("stopped process (pid={pid:?})");
         Ok(())
@@ -1305,7 +1350,7 @@ impl ProcessManager {
     fn continue_process(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
         for stop_signum in [SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU] {
-            process.state_mut().signals_mut().clear_pending(stop_signum);
+            process.discard_pending(stop_signum);
         }
         process.state_mut().set_stopped(false);
         trace!("continued process (pid={pid:?})");

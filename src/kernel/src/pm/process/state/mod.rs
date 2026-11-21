@@ -50,7 +50,13 @@ use crate::{
     pm::{
         process::{
             capability::Capabilities,
-            state::signal::SignalControl,
+            state::signal::{
+                default_action,
+                DefaultAction,
+                SignalControl,
+                SignalDisposition,
+                UNBLOCKABLE,
+            },
             LifecycleTerminationCredit,
         },
         sync::{
@@ -84,6 +90,7 @@ use ::sys::{
         ConditionAddress,
         MutexAddress,
         ProcessIdentifier,
+        SigSet,
         ThreadIdentifier,
     },
     ExitStatus,
@@ -173,6 +180,65 @@ impl ProcessRefMut<'_> {
             ProcessRefMut::Interrupted(process) => process.find_thread_mut(tid),
             ProcessRefMut::Zombie(process) => process.find_thread_mut(tid),
         }
+    }
+
+    /// Visits every live thread without changing its scheduling state. Zombies are excluded.
+    pub(crate) fn for_each_live_thread_mut(&mut self, visit: impl FnMut(ThreadRefMut<'_>)) {
+        match self {
+            Self::Runnable(process) => process.for_each_live_thread_mut(visit),
+            Self::Running(process) => process.for_each_live_thread_mut(visit),
+            Self::Sleeping(process) => process.for_each_live_thread_mut(visit),
+            Self::Interrupted(process) => process.for_each_live_thread_mut(visit),
+            Self::Zombie(_) => {},
+        }
+    }
+
+    /// Returns the signals blocked by every live thread, or all signals if none remain.
+    pub(crate) fn blocked_by_all(&mut self) -> SigSet {
+        let mut blocked: SigSet = SigSet::MAX;
+        self.for_each_live_thread_mut(|mut thread| {
+            blocked &= thread.thread_state_mut().blocked();
+        });
+        blocked
+    }
+
+    /// Discards a signal from the process-directed and every live thread-directed pending set.
+    pub(crate) fn discard_pending(&mut self, signum: usize) {
+        self.state_mut().signals_mut().clear_pending(signum);
+        self.for_each_live_thread_mut(|mut thread| {
+            thread.thread_state_mut().clear_pending(signum);
+        });
+    }
+
+    /// Discards ignored signals and selects a default action permitted by the target masks.
+    pub(crate) fn next_pending_default(
+        &mut self,
+        blocked: SigSet,
+        thread_pending: SigSet,
+    ) -> Option<(usize, DefaultAction)> {
+        let process_pending: SigSet = self.state_mut().signals_mut().pending();
+        let mut pending: SigSet = process_pending | thread_pending;
+        if pending == 0 {
+            return None;
+        }
+        let all_blocked: SigSet = self.blocked_by_all() & !UNBLOCKABLE;
+        let deliverable: SigSet = (process_pending & !all_blocked) | (thread_pending & !blocked);
+        while pending != 0 {
+            let signum: usize = (pending.trailing_zeros() as usize) + 1;
+            let bit: SigSet = 1u64 << (signum - 1);
+            pending &= !bit;
+            let action: DefaultAction = match self.state_mut().signals_mut().disposition(signum) {
+                Some(SignalDisposition::Ignore) => DefaultAction::Ignore,
+                Some(SignalDisposition::Default) => default_action(signum),
+                Some(SignalDisposition::Handler(_)) | None => continue,
+            };
+            if action == DefaultAction::Ignore {
+                self.discard_pending(signum);
+            } else if (deliverable & bit) != 0 {
+                return Some((signum, action));
+            }
+        }
+        None
     }
 }
 
