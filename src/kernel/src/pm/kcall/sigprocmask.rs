@@ -21,12 +21,46 @@ use ::sys::{
         ProcessIdentifier,
         SigSet,
         ThreadIdentifier,
+        SIG_SETMASK,
     },
 };
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Replaces the calling thread's signal mask and snapshots its caught-signal delivery epoch.
+/// The epoch advances when a handler is committed, even if no kernel call returns EINTR.
+///
+/// # Parameters
+///
+/// - `caller_pid`: Owner of the user-space buffers.
+/// - `caller_tid`: Calling thread.
+/// - `set`: User-space mask pointer, or null to leave the mask unchanged.
+/// - `oldset`: User-space output pointer for the previous mask, or null.
+///
+/// # Returns
+///
+/// The epoch before return-to-user signal delivery, modulo 2^32, or a kernel error.
+///
+pub fn sigcheckpoint(
+    caller_pid: ProcessIdentifier,
+    caller_tid: ThreadIdentifier,
+    set: u32,
+    oldset: u32,
+) -> KcallResult {
+    match sigprocmask(caller_pid, caller_tid, SIG_SETMASK as u32, set, oldset) {
+        KcallResult::Success(_) => {
+            // SAFETY: the process manager is initialized and kernel access is synchronized.
+            let epoch: u32 = unsafe { ProcessManager::get() }.get_signal_epoch();
+            KcallResult::Success(epoch.into())
+        },
+        result => result,
+    }
+}
 
 ///
 /// # Description

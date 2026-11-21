@@ -101,8 +101,8 @@ pub unsafe fn kcall1(kcall_nr: u32, arg0: u32) -> i64 {
 ///
 #[inline(never)]
 pub unsafe fn kcall2(kcall_nr: u32, arg0: u32, arg1: u32) -> i64 {
-    let low_ret: i32;
-    let high_ret: i32;
+    let low_ret: u32;
+    let high_ret: u32;
 
     // SAFETY: this will trigger a kernel call.
     unsafe {

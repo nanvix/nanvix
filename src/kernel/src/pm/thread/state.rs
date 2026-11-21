@@ -100,6 +100,8 @@ pub struct ThreadState {
     /// the generated signal here and the delivery checkpoints union it with the process-directed
     /// pending set.
     pending: u64,
+    /// Wrapping count of caught signals committed for delivery to this thread.
+    signal_epoch: u32,
     /// Mask to restore once a pending `sigsuspend()` completes.
     ///
     /// Set by `sigsuspend()` to the mask in effect before it installed its temporary mask. When
@@ -160,6 +162,7 @@ impl ThreadState {
             detached: false,
             blocked: 0,
             pending: 0,
+            signal_epoch: 0,
             saved_blocked: None,
             restart: None,
         }
@@ -454,6 +457,16 @@ impl ThreadState {
     ///
     pub(crate) fn pending(&self) -> u64 {
         self.pending
+    }
+
+    /// Returns this thread's caught-signal delivery epoch, modulo 2^32.
+    pub(crate) fn signal_epoch(&self) -> u32 {
+        self.signal_epoch
+    }
+
+    /// Advances the epoch after a caught signal's frame has been installed.
+    pub(crate) fn record_signal_delivery(&mut self) {
+        self.signal_epoch = self.signal_epoch.wrapping_add(1);
     }
 
     ///
