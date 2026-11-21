@@ -30,6 +30,7 @@ mod duplicate;
 mod getppid;
 mod mmio_ramfs;
 mod rendezvous;
+mod signal_epoch;
 mod source_spoofing;
 mod tls;
 
@@ -68,6 +69,8 @@ pub fn main() -> Result<(), Error> {
     tls::run()?;
 
     direction_flag::run()?;
+
+    signal_epoch::run()?;
 
     demand_paging::run()?;
 

@@ -3647,6 +3647,11 @@ impl ProcessManager {
         self.get_running().get_tid()
     }
 
+    /// Returns the running thread's caught-signal delivery epoch, modulo 2^32.
+    pub fn get_signal_epoch(&self) -> u32 {
+        self.get_running().get_signal_epoch()
+    }
+
     pub fn has_capability(
         &self,
         pid: ProcessIdentifier,
