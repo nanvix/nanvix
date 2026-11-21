@@ -131,6 +131,8 @@ pub enum KcallNumber {
     Alarm = KcallNumber::NR_ALARM_SYSCALL,
     /// Replaces the calling thread's signal mask and snapshots its caught-signal delivery epoch.
     Sigcheckpoint = KcallNumber::NR_SIGCHECKPOINT_SYSCALL,
+    /// Receives a message while atomically restoring the calling thread's signal mask.
+    RecvRestoringSignals = KcallNumber::NR_RECV_RESTORING_SIGNALS_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -186,6 +188,7 @@ impl KcallNumber {
     const NR_SIGSUSPEND_SYSCALL: u32 = 46;
     const NR_ALARM_SYSCALL: u32 = 47;
     const NR_SIGCHECKPOINT_SYSCALL: u32 = 48;
+    const NR_RECV_RESTORING_SIGNALS_SYSCALL: u32 = 49;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -242,6 +245,7 @@ impl From<u32> for KcallNumber {
             Self::NR_SIGSUSPEND_SYSCALL => KcallNumber::Sigsuspend,
             Self::NR_ALARM_SYSCALL => KcallNumber::Alarm,
             Self::NR_SIGCHECKPOINT_SYSCALL => KcallNumber::Sigcheckpoint,
+            Self::NR_RECV_RESTORING_SIGNALS_SYSCALL => KcallNumber::RecvRestoringSignals,
             _ => KcallNumber::Invalid,
         }
     }
@@ -300,6 +304,7 @@ impl From<KcallNumber> for u32 {
             KcallNumber::Sigsuspend => KcallNumber::NR_SIGSUSPEND_SYSCALL,
             KcallNumber::Alarm => KcallNumber::NR_ALARM_SYSCALL,
             KcallNumber::Sigcheckpoint => KcallNumber::NR_SIGCHECKPOINT_SYSCALL,
+            KcallNumber::RecvRestoringSignals => KcallNumber::NR_RECV_RESTORING_SIGNALS_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
     }

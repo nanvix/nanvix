@@ -12,6 +12,7 @@ use crate::{
     },
     pm::{
         self,
+        InterruptReason,
         ProcessManager,
         SleepError,
     },
@@ -21,6 +22,7 @@ use ::sys::{
     ipc::Message,
     pm::{
         ProcessIdentifier,
+        SigSet,
         ThreadIdentifier,
     },
 };
@@ -96,4 +98,42 @@ pub unsafe fn recv(
     recv_with(tid, pid, |message| {
         pm::copy_to_user(ProcessManager::get_mut(), pid, msg as *mut Message, message)
     })
+}
+
+///
+/// # Description
+///
+/// Restores the calling thread's signal mask and receives a message without a user-space gap.
+/// A newly unblocked pending signal can interrupt the event wait instead of being consumed before
+/// the thread starts waiting.
+///
+/// # Parameters
+///
+/// - `tid`: Calling thread.
+/// - `pid`: Calling process.
+/// - `msg`: User-space destination for the message.
+/// - `mask`: Signal mask to restore before waiting.
+///
+/// # Returns
+///
+/// Empty on success, or a sleep error.
+///
+/// # Safety
+///
+/// The requirements of [`recv`] apply. No process-manager reference may be held across this call.
+///
+pub unsafe fn recv_restoring_signals(
+    tid: ThreadIdentifier,
+    pid: ProcessIdentifier,
+    msg: usize,
+    mask: SigSet,
+) -> Result<(), SleepError> {
+    match ProcessManager::get_mut().restore_wait_signal_mask(pid, tid, mask) {
+        Ok(false) => recv(tid, pid, msg),
+        Ok(true) => Err(SleepError::Interrupted(InterruptReason::Signaled)),
+        Err(error) => {
+            error!("recv_restoring_signals(): failed to restore mask (error={error:?})");
+            Err(SleepError::Generic(error))
+        },
+    }
 }

@@ -90,7 +90,8 @@ fn test_thread_local_epoch() -> Result<(), Error> {
             return Err(error);
         },
     };
-    let mut result: usize = usize::MAX;
+    // Kernel thread exit statuses occupy 32 bits, including on x86_64.
+    let mut result: usize = u32::MAX as usize;
     pm::__kcall_join_thread(tid, &mut result)?;
     // SAFETY: the joined thread no longer accesses its stack.
     unsafe { dealloc(stack, layout) };
@@ -151,8 +152,19 @@ pub fn run() -> Result<(), Error> {
 
     assert!(!HANDLER_FAILED.load(Ordering::Relaxed), "a signal handler kernel call failed");
 
+    pm::__kcall_sigcheckpoint(Some(&blocked), None)?;
+    pm::__kcall_kill(pid, SIGUSR1 as i32)?;
+    pm::__kcall_alarm(1)?;
+    let error: Error = ::sys::kcall::ipc::__kcall_recv_restoring_signals(unblocked)
+        .expect_err("a pending signal must interrupt the receive wait");
+    pm::__kcall_alarm(0)?;
+    assert_eq!(error.code, ErrorCode::Interrupted);
+    let received: u32 = nested.wrapping_add(1);
+    assert_eq!(OBSERVED_EPOCH.load(Ordering::Relaxed), received);
+    assert!(!HANDLER_FAILED.load(Ordering::Relaxed), "the receive handler kernel call failed");
+
     test_thread_local_epoch()?;
-    assert_eq!(pm::__kcall_sigcheckpoint(None, None)?, nested);
+    assert_eq!(pm::__kcall_sigcheckpoint(None, None)?, received);
     pm::__kcall_sigcheckpoint(Some(&old_mask), None)?;
     for (signum, old) in [SIGUSR1, SIGUSR2].into_iter().zip(previous.iter()) {
         // SAFETY: the saved action remains valid and no output buffer is requested.

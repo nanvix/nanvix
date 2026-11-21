@@ -507,7 +507,7 @@ pub fn do_push(
             // Restore signal delivery only after the request is visible to its counterpart. A
             // pending signal may now interrupt the sleep without opening a metadata/bulk gap.
             match unsafe { ProcessManager::get_mut() }
-                .restore_rendezvous_signal_mask(caller_pid, caller_tid, mask)
+                .restore_wait_signal_mask(caller_pid, caller_tid, mask)
             {
                 Ok(false) => {},
                 Ok(true) => {
@@ -728,7 +728,7 @@ pub fn do_pull(
             // Restore signal delivery only after the request is visible to its counterpart. A
             // pending signal may now interrupt the sleep without opening a metadata/bulk gap.
             match unsafe { ProcessManager::get_mut() }
-                .restore_rendezvous_signal_mask(caller_pid, caller_tid, mask)
+                .restore_wait_signal_mask(caller_pid, caller_tid, mask)
             {
                 Ok(false) => {},
                 Ok(true) => {
