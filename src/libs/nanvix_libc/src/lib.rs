@@ -132,6 +132,8 @@ extern crate syslog;
 #[cfg(feature = "backend-nanvix")]
 pub mod start;
 
+mod posix_syslog;
+
 //==================================================================================================
 // errno support
 //==================================================================================================
@@ -398,37 +400,6 @@ pub static mut daylight: c_int = 0;
 /// `tzset` — initializes the time-zone globals. They are already fixed to UTC, so this is a no-op.
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub extern "C" fn tzset() {}
-
-//==================================================================================================
-// System logging stubs (no system log daemon in standalone mode)
-//==================================================================================================
-
-/// Stub `openlog` — no system log daemon, so this is a no-op.
-///
-/// # Safety
-///
-/// `ident` may be null or a valid C string; it is not dereferenced.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn openlog(_ident: *const c_char, _option: c_int, _facility: c_int) {}
-
-/// Stub `closelog` — no-op.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn closelog() {}
-
-/// Stub `syslog` — discards the message (declared variadic in C; the extra
-/// arguments are ignored under the cdecl caller-cleanup ABI).
-///
-/// # Safety
-///
-/// `format` may be null or a valid C string; it is not dereferenced.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn syslog(_priority: c_int, _format: *const c_char) {}
-
-/// Stub `setlogmask` — tracks nothing and reports an empty previous mask.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn setlogmask(_mask: c_int) -> c_int {
-    0
-}
 
 //==================================================================================================
 // Generic C11/GCC atomic library routines

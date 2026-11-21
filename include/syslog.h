@@ -10,8 +10,8 @@
  * @file syslog.h
  * @brief System logging interface.
  *
- * Nanvix has no system log daemon in standalone mode, so these routines are
- * no-ops; the definitions exist so that ports referencing them compile and link.
+ * In standalone mode, syslog records are written to the Nanvix guest console;
+ * LOG_PERROR also writes them to standard error.
  */
 
 #ifdef __cplusplus

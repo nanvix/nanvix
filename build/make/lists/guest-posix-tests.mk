@@ -66,6 +66,7 @@ ALL_POSIX_TESTS := \
 	test-c-signal-rpc \
 	test-c-sigmask \
 	test-c-stdio \
+	test-c-syslog \
 	test-c-termios \
 	test-c-thread \
 	test-c-wchar

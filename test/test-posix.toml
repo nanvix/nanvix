@@ -406,6 +406,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-syslog"
+program = "./bin/test-c-syslog.initrd"
+expected_output = "missing: No such file or directory (42)"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-termios"
 program = "./bin/test-c-termios.initrd"
 expected_exit_code = 0

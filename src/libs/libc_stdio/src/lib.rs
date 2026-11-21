@@ -37,6 +37,8 @@
 // The following lints are allowed in tests to facilitate testing of error conditions.
 #![cfg_attr(not(test), forbid(clippy::expect_used))]
 
+extern crate alloc;
+
 //==================================================================================================
 // Modules
 //==================================================================================================
