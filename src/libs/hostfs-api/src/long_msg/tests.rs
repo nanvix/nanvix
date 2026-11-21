@@ -26,6 +26,41 @@ fn long_link_round_trip() {
 }
 
 #[test]
+#[cfg(feature = "std")]
+fn long_path_requests_round_trip() {
+    let op_id: OperationId = OperationId::new(5);
+    let wire: &[u8] = b"\x05\x00\x00\x00\x08\x00dir/file";
+    for bytes in [
+        serialize_long_unlink_request(op_id, b"dir/file"),
+        serialize_long_rmdir_request(op_id, b"dir/file"),
+        serialize_long_readlink_request(op_id, b"dir/file"),
+        serialize_long_lstat_request(op_id, b"dir/file"),
+    ] {
+        assert_eq!(bytes.expect("request should serialize"), wire);
+    }
+
+    let unlink: LongUnlinkRequest = deserialize_long_unlink(wire).expect("unlink should decode");
+    assert_eq!((unlink.op_id, unlink.path.as_str()), (op_id, "dir/file"));
+    let rmdir: LongRmdirRequest = deserialize_long_rmdir(wire).expect("rmdir should decode");
+    assert_eq!((rmdir.op_id, rmdir.path.as_str()), (op_id, "dir/file"));
+    let readlink: LongReadlinkRequest =
+        deserialize_long_readlink(wire).expect("readlink should decode");
+    assert_eq!((readlink.op_id, readlink.path.as_str()), (op_id, "dir/file"));
+    let lstat: LongLstatRequest = deserialize_long_lstat(wire).expect("lstat should decode");
+    assert_eq!((lstat.op_id, lstat.path.as_str()), (op_id, "dir/file"));
+}
+
+#[test]
+#[cfg(feature = "std")]
+fn long_path_request_rejects_malformed_bytes() {
+    let header_size: usize = LSTAT_HEADER_SIZE;
+    let wire: &[u8] = b"\x05\x00\x00\x00\x03\x00abc";
+    assert!(deserialize_long_path_request(&wire[..header_size - 1], header_size).is_none());
+    assert!(deserialize_long_path_request(&wire[..wire.len() - 1], header_size).is_none());
+    assert!(deserialize_long_path_request(b"\x05\x00\x00\x00\x01\x00\xff", header_size).is_none());
+}
+
+#[test]
 fn mode_path_request_round_trip() {
     let bytes = serialize_long_mode_path_request(OperationId::new(9), 0o754, 2, b"dir/file")
         .expect("mode/path request should serialize");

@@ -386,6 +386,30 @@ pub fn deserialize_long_readdir_response(bytes: &[u8]) -> Option<LongReaddirResp
 // Deserialization (hostfsd, std)
 //==================================================================================================
 
+/// Deserializes the operation identifier and path of a long request that carries only a path.
+///
+/// Wire format: `[op_id:4][path_len:2][path:N]`, where `header_size` is the size of the `op_id`
+/// and `path_len` fields. Returns `None` if `bytes` is shorter than the header plus the declared
+/// path, or if the path is not valid UTF-8.
+#[cfg(feature = "std")]
+fn deserialize_long_path_request(
+    bytes: &[u8],
+    header_size: usize,
+) -> Option<(OperationId, std::string::String)> {
+    if bytes.len() < header_size {
+        return None;
+    }
+    let op_id: OperationId =
+        OperationId::new(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
+    let path_len: usize = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
+    if bytes.len() < header_size + path_len {
+        return None;
+    }
+    let path: std::string::String =
+        std::string::String::from_utf8(bytes[header_size..header_size + path_len].to_vec()).ok()?;
+    Some((op_id, path))
+}
+
 /// Result of deserializing a long OPEN request.
 #[cfg(feature = "std")]
 pub struct LongOpenRequest {
@@ -430,18 +454,8 @@ pub struct LongUnlinkRequest {
 /// Deserializes a long UNLINK request from assembled bytes.
 #[cfg(feature = "std")]
 pub fn deserialize_long_unlink(bytes: &[u8]) -> Option<LongUnlinkRequest> {
-    if bytes.len() < UNLINK_HEADER_SIZE {
-        return None;
-    }
-    let op_id = OperationId::new(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
-    let path_len = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
-    if bytes.len() < UNLINK_HEADER_SIZE + path_len {
-        return None;
-    }
-    let path = std::string::String::from_utf8(
-        bytes[UNLINK_HEADER_SIZE..UNLINK_HEADER_SIZE + path_len].to_vec(),
-    )
-    .ok()?;
+    let (op_id, path): (OperationId, std::string::String) =
+        deserialize_long_path_request(bytes, UNLINK_HEADER_SIZE)?;
     Some(LongUnlinkRequest { op_id, path })
 }
 
@@ -455,18 +469,8 @@ pub struct LongRmdirRequest {
 /// Deserializes a long RMDIR request from assembled bytes.
 #[cfg(feature = "std")]
 pub fn deserialize_long_rmdir(bytes: &[u8]) -> Option<LongRmdirRequest> {
-    if bytes.len() < RMDIR_HEADER_SIZE {
-        return None;
-    }
-    let op_id = OperationId::new(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
-    let path_len = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
-    if bytes.len() < RMDIR_HEADER_SIZE + path_len {
-        return None;
-    }
-    let path = std::string::String::from_utf8(
-        bytes[RMDIR_HEADER_SIZE..RMDIR_HEADER_SIZE + path_len].to_vec(),
-    )
-    .ok()?;
+    let (op_id, path): (OperationId, std::string::String) =
+        deserialize_long_path_request(bytes, RMDIR_HEADER_SIZE)?;
     Some(LongRmdirRequest { op_id, path })
 }
 
@@ -632,18 +636,8 @@ pub struct LongReadlinkRequest {
 /// Deserializes a long READLINK request from assembled bytes.
 #[cfg(feature = "std")]
 pub fn deserialize_long_readlink(bytes: &[u8]) -> Option<LongReadlinkRequest> {
-    if bytes.len() < READLINK_HEADER_SIZE {
-        return None;
-    }
-    let op_id = OperationId::new(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
-    let path_len = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
-    if bytes.len() < READLINK_HEADER_SIZE + path_len {
-        return None;
-    }
-    let path = std::string::String::from_utf8(
-        bytes[READLINK_HEADER_SIZE..READLINK_HEADER_SIZE + path_len].to_vec(),
-    )
-    .ok()?;
+    let (op_id, path): (OperationId, std::string::String) =
+        deserialize_long_path_request(bytes, READLINK_HEADER_SIZE)?;
     Some(LongReadlinkRequest { op_id, path })
 }
 
@@ -657,18 +651,8 @@ pub struct LongLstatRequest {
 /// Deserializes a long LSTAT request from assembled bytes.
 #[cfg(feature = "std")]
 pub fn deserialize_long_lstat(bytes: &[u8]) -> Option<LongLstatRequest> {
-    if bytes.len() < LSTAT_HEADER_SIZE {
-        return None;
-    }
-    let op_id = OperationId::new(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
-    let path_len = u16::from_le_bytes([bytes[4], bytes[5]]) as usize;
-    if bytes.len() < LSTAT_HEADER_SIZE + path_len {
-        return None;
-    }
-    let path = std::string::String::from_utf8(
-        bytes[LSTAT_HEADER_SIZE..LSTAT_HEADER_SIZE + path_len].to_vec(),
-    )
-    .ok()?;
+    let (op_id, path): (OperationId, std::string::String) =
+        deserialize_long_path_request(bytes, LSTAT_HEADER_SIZE)?;
     Some(LongLstatRequest { op_id, path })
 }
 
@@ -826,6 +810,23 @@ pub fn deserialize_long_mode_path(bytes: &[u8]) -> Option<LongModePathRequest> {
 // Serialization (vfsd, no_std + alloc)
 //==================================================================================================
 
+/// Serializes the body of a long request that carries only a path.
+///
+/// Wire format: `[op_id:4][path_len:2][path:N]`, where `header_size` is the size of the `op_id`
+/// and `path_len` fields. Returns `None` if `path` is longer than [`MAX_PATH_LEN`].
+fn serialize_long_path_request(
+    op_id: OperationId,
+    path: &[u8],
+    header_size: usize,
+) -> Option<Vec<u8>> {
+    let path_len: u16 = u16::try_from(path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(header_size + path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path);
+    Some(buf)
+}
+
 /// Serializes the body of a long OPEN request.
 ///
 /// Wire format: `[op_id:4][flags:4][mode:4][path_len:2][path:N]`. Returns `None` if `path`
@@ -851,12 +852,7 @@ pub fn serialize_long_open_request(
 /// Wire format: `[op_id:4][path_len:2][path:N]`. Returns `None` if `path` is
 /// longer than [`MAX_PATH_LEN`].
 pub fn serialize_long_unlink_request(op_id: OperationId, path: &[u8]) -> Option<Vec<u8>> {
-    let path_len: u16 = u16::try_from(path.len()).ok()?;
-    let mut buf: Vec<u8> = Vec::with_capacity(UNLINK_HEADER_SIZE + path.len());
-    buf.extend_from_slice(&op_id.to_le_bytes());
-    buf.extend_from_slice(&path_len.to_le_bytes());
-    buf.extend_from_slice(path);
-    Some(buf)
+    serialize_long_path_request(op_id, path, UNLINK_HEADER_SIZE)
 }
 
 /// Serializes the body of a long RMDIR request.
@@ -864,12 +860,7 @@ pub fn serialize_long_unlink_request(op_id: OperationId, path: &[u8]) -> Option<
 /// Wire format: `[op_id:4][path_len:2][path:N]`. Returns `None` if `path` is
 /// longer than [`MAX_PATH_LEN`].
 pub fn serialize_long_rmdir_request(op_id: OperationId, path: &[u8]) -> Option<Vec<u8>> {
-    let path_len: u16 = u16::try_from(path.len()).ok()?;
-    let mut buf: Vec<u8> = Vec::with_capacity(RMDIR_HEADER_SIZE + path.len());
-    buf.extend_from_slice(&op_id.to_le_bytes());
-    buf.extend_from_slice(&path_len.to_le_bytes());
-    buf.extend_from_slice(path);
-    Some(buf)
+    serialize_long_path_request(op_id, path, RMDIR_HEADER_SIZE)
 }
 
 /// Serializes the body of a long MKDIR request.
@@ -953,12 +944,7 @@ pub fn serialize_long_symlink_request(
 /// Wire format: `[op_id:4][path_len:2][path:N]`. Returns `None` if `path` is
 /// longer than [`MAX_PATH_LEN`].
 pub fn serialize_long_readlink_request(op_id: OperationId, path: &[u8]) -> Option<Vec<u8>> {
-    let path_len: u16 = u16::try_from(path.len()).ok()?;
-    let mut buf: Vec<u8> = Vec::with_capacity(READLINK_HEADER_SIZE + path.len());
-    buf.extend_from_slice(&op_id.to_le_bytes());
-    buf.extend_from_slice(&path_len.to_le_bytes());
-    buf.extend_from_slice(path);
-    Some(buf)
+    serialize_long_path_request(op_id, path, READLINK_HEADER_SIZE)
 }
 
 /// Serializes the body of a long LSTAT request.
@@ -966,12 +952,7 @@ pub fn serialize_long_readlink_request(op_id: OperationId, path: &[u8]) -> Optio
 /// Wire format: `[op_id:4][path_len:2][path:N]`. Returns `None` if `path` is
 /// longer than [`MAX_PATH_LEN`].
 pub fn serialize_long_lstat_request(op_id: OperationId, path: &[u8]) -> Option<Vec<u8>> {
-    let path_len: u16 = u16::try_from(path.len()).ok()?;
-    let mut buf: Vec<u8> = Vec::with_capacity(LSTAT_HEADER_SIZE + path.len());
-    buf.extend_from_slice(&op_id.to_le_bytes());
-    buf.extend_from_slice(&path_len.to_le_bytes());
-    buf.extend_from_slice(path);
-    Some(buf)
+    serialize_long_path_request(op_id, path, LSTAT_HEADER_SIZE)
 }
 
 /// Serializes the body of a long CHOWNAT request.
