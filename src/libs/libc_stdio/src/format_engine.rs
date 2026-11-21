@@ -268,6 +268,47 @@ impl WriteTarget for UnboundedBufWriter {
     }
 }
 
+/// Writes formatted output into a fallibly growing byte vector.
+pub(crate) struct VecWriter {
+    buf: ::alloc::vec::Vec<u8>,
+    failed: bool,
+}
+
+impl VecWriter {
+    /// Creates an empty fallible output buffer.
+    pub(crate) fn new() -> Self {
+        Self {
+            buf: ::alloc::vec::Vec::new(),
+            failed: false,
+        }
+    }
+
+    /// Indicates whether an output allocation failed.
+    pub(crate) fn failed(&self) -> bool {
+        self.failed
+    }
+
+    /// Returns the formatted bytes.
+    pub(crate) fn into_inner(self) -> ::alloc::vec::Vec<u8> {
+        self.buf
+    }
+}
+
+impl WriteTarget for VecWriter {
+    fn write_byte(&mut self, byte: u8) -> Result<(), ()> {
+        if self.buf.try_reserve(1).is_err() {
+            self.failed = true;
+            return Err(());
+        }
+        self.buf.push(byte);
+        Ok(())
+    }
+
+    fn total(&self) -> usize {
+        self.buf.len()
+    }
+}
+
 //==================================================================================================
 // Private Functions
 //==================================================================================================

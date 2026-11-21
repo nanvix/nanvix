@@ -9,6 +9,7 @@ use crate::format_engine::{
     format_core,
     ArgSource,
     BufWriter,
+    VecWriter,
     WriteTarget,
 };
 use ::core::ffi::VaList;
@@ -70,6 +71,36 @@ impl<'a> ArgSource for VaListArgs<'a> {
         // SAFETY: caller guarantees matching format specifiers and arguments.
         unsafe { self.va.next_arg::<f64>() }
     }
+}
+
+/// Formats a C string using an argument list and returns all formatted bytes.
+///
+/// Unlike `vsnprintf`, this helper grows its output buffer and does not append a null terminator.
+///
+/// # Parameters
+///
+/// - `fmt`: Pointer to a null-terminated printf format string.
+/// - `ap`: Variable argument list matching the format specifiers in `fmt`.
+///
+/// # Returns
+///
+/// The complete formatted byte sequence, or `None` if the format is null or allocation fails.
+///
+/// # Safety
+///
+/// The caller must ensure that `fmt` points to a valid, null-terminated format string and that
+/// `ap` provides arguments matching its format specifiers.
+pub unsafe fn format_to_vec(fmt: *const c_char, ap: VaList<'_>) -> Option<::alloc::vec::Vec<u8>> {
+    if fmt.is_null() {
+        return None;
+    }
+    let mut writer: VecWriter = VecWriter::new();
+    let mut args: VaListArgs<'_> = VaListArgs { va: ap };
+    let _ = format_core(&mut writer, fmt, &mut args);
+    if writer.failed() {
+        return None;
+    }
+    Some(writer.into_inner())
 }
 
 //==================================================================================================
