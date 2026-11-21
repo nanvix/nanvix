@@ -174,6 +174,7 @@ static void handle_restart_signal(int signum)
 struct restart_args {
     int *pipefd;
     int writing;
+    int release;
 };
 
 static void *release_after_signal(void *arg)
@@ -199,9 +200,13 @@ static void *release_after_signal(void *arg)
         assert(sched_yield() == 0);
     }
 
-    // Only the main thread can catch this signal. Let a restarted transfer finish, but
-    // leave the following request blocked if the I/O loop forgets the handler delivery.
+    // Only the main thread can catch this signal.
     assert(kill(getpid(), SIGUSR1) == 0);
+    if (!args->release) {
+        return (NULL);
+    }
+    // Let a restarted transfer finish, but leave the following request blocked if the
+    // I/O loop forgets the handler delivery.
     if (args->writing) {
         unsigned char page[PAGE_SIZE];
         assert(read(args->pipefd[0], page, sizeof(page)) == sizeof(page));
@@ -211,7 +216,7 @@ static void *release_after_signal(void *arg)
     return (NULL);
 }
 
-static void test_successful_signal_delivery(int writing)
+static void test_successful_signal_delivery(int writing, int release)
 {
     int pipefd[2];
     assert(pipe(pipefd) == 0);
@@ -226,13 +231,16 @@ static void test_successful_signal_delivery(int writing)
     restart_count = 0;
     alarm_count = 1;
     alarm(RETURN_BOUND_SECONDS);
-    struct restart_args args = {.pipefd = pipefd, .writing = writing};
+    struct restart_args args = {.pipefd = pipefd, .writing = writing, .release = release};
     pthread_t worker;
     assert(pthread_create(&worker, NULL, release_after_signal, &args) == 0);
     ssize_t count = writing ? write(pipefd[1], restart_buffer, sizeof(restart_buffer))
                             : read(pipefd[0], restart_buffer, sizeof(restart_buffer));
     assert(count >= PAGE_SIZE && count <= 2 * PAGE_SIZE);
     assert(count % PAGE_SIZE == 0);
+    if (!release) {
+        assert(count == PAGE_SIZE);
+    }
     assert(pthread_join(worker, NULL) == 0);
     assert(restart_count == 1);
     if (!writing) {
@@ -261,7 +269,10 @@ int main(void)
     action.sa_handler = handle_restart_signal;
     action.sa_flags = SA_RESTART;
     assert(sigaction(SIGUSR1, &action, NULL) == 0);
-    test_successful_signal_delivery(1);
-    test_successful_signal_delivery(0);
+    test_successful_signal_delivery(1, 1);
+    test_successful_signal_delivery(0, 1);
+    action.sa_flags = 0;
+    assert(sigaction(SIGUSR1, &action, NULL) == 0);
+    test_successful_signal_delivery(1, 0);
     return (0);
 }

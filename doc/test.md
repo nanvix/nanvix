@@ -87,6 +87,8 @@ Cleanup probes remain under a fatal watchdog. Additional synchronized read/write
 `SA_RESTART` to suppress `EINTR`: another thread signals after one page of progress and releases
 one more page, verifying that a caught handler ends the compound operation even when kernel
 calls succeed.
+A non-restarting variant leaves the pipe full after the handler, checking that the completion
+wait cancels a parked write without a reader freeing space.
 The existing `posix/test-c-signal-rpc` suite additionally checks nested handler RPCs and mailbox
 correlation.
 The `posix/test-c-stdio` suite covers formatted input from files, redirected standard input,

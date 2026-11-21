@@ -41,11 +41,11 @@ impl SignalMaskGuard {
         Ok(Self { previous, epoch })
     }
 
-    /// Blocks signals and rejects another request after a caught handler in this operation.
+    /// Blocks signals and rejects another blocking step after a caught handler in this operation.
     pub(crate) fn block_all_since(initial_epoch: &mut Option<u32>) -> Result<Self, Error> {
         let guard: Self = Self::block_all()?;
         if initial_epoch.is_some_and(|initial| initial != guard.epoch) {
-            let reason: &str = "caught signal between I/O requests";
+            let reason: &str = "caught signal during I/O";
             ::syslog::debug!("block_all_since(): {reason}");
             return Err(Error::new(ErrorCode::Interrupted, reason));
         }
@@ -137,8 +137,27 @@ pub(crate) fn recv_response(token: &RequestToken) -> Result<Message, Error> {
 
 /// Attempts to receive the next matching response, preserving `EINTR` for explicit arbitration.
 pub(crate) fn recv_response_interruptible(token: &RequestToken) -> Result<Message, Error> {
+    recv_response_with(token, ::sys::kcall::ipc::__kcall_recv)
+}
+
+/// Checks the operation's epoch before each receive and atomically restores signals while waiting.
+pub(crate) fn recv_response_interruptible_since(
+    token: &RequestToken,
+    initial_epoch: &mut Option<u32>,
+) -> Result<Message, Error> {
+    recv_response_with(token, || {
+        let signal_mask: SignalMaskGuard = SignalMaskGuard::block_all_since(initial_epoch)?;
+        ::sys::kcall::ipc::__kcall_recv_restoring_signals(signal_mask.previous())
+    })
+}
+
+/// Receives correlated responses with the selected waiting policy.
+fn recv_response_with(
+    token: &RequestToken,
+    receive: impl FnMut() -> Result<Message, Error>,
+) -> Result<Message, Error> {
     token.receive_response_with(
-        ::sys::kcall::ipc::__kcall_recv,
+        receive,
         |identifier| {
             ::syslog::warn!(
                 "recv_response(): dropping stale response (expected_request_id={}, request_id={})",

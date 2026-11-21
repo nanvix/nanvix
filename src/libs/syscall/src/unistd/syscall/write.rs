@@ -136,8 +136,13 @@ fn write_chunk(
         Err(error) => return Err(error),
     }
 
+    let receive_result: Result<Message, Error> = if backend.cancel_pipe_on_interrupt {
+        crate::rpc::recv_response_interruptible_since(&token, initial_epoch)
+    } else {
+        crate::rpc::recv_response_interruptible(&token)
+    };
     let mut interrupted: Option<Error> = None;
-    let response: Message = match crate::rpc::recv_response_interruptible(&token) {
+    let response: Message = match receive_result {
         Ok(response) => response,
         Err(error) if error.code == ErrorCode::Interrupted => {
             if backend.cancel_pipe_on_interrupt {
