@@ -117,6 +117,28 @@ impl RunningProcess {
         &mut self.running
     }
 
+    /// Visits the running, ready, interrupted, and sleeping threads, excluding zombies.
+    pub(super) fn for_each_live_thread_mut(&mut self, mut visit: impl FnMut(ThreadRefMut<'_>)) {
+        visit(ThreadRefMut::Running(&mut self.running));
+        for thread in self.ready.iter_mut().flat_map(|threads| threads.iter_mut()) {
+            visit(ThreadRefMut::Ready(thread));
+        }
+        for thread in self
+            .interrupted_threads
+            .iter_mut()
+            .flat_map(|threads| threads.iter_mut())
+        {
+            visit(ThreadRefMut::Interrupted(thread));
+        }
+        for thread in self
+            .sleeping_threads
+            .iter_mut()
+            .flat_map(|threads| threads.iter_mut())
+        {
+            visit(ThreadRefMut::Sleeping(thread));
+        }
+    }
+
     ///
     /// # Description
     ///

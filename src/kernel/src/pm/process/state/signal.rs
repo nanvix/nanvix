@@ -95,8 +95,6 @@ pub enum SignalDisposition {
 ///
 /// Per-process signal control block.
 ///
-// The disposition table is read and written by `sigaction()`; the remaining fields are inert
-// plumbing read by later phases of the signals effort.
 #[derive(Debug)]
 pub struct SignalControl {
     /// Disposition for each of the 64 signals, indexed by `signum - 1`.
@@ -240,7 +238,7 @@ pub fn default_action(signum: usize) -> DefaultAction {
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KillOutcome {
-    /// The signal was fully handled in-kernel: it was posted and a candidate thread woken, it was
+    /// The signal needs no further kernel-call work: it was queued for later delivery, it was
     /// discarded, only the existence check was performed, or the target was terminated via the
     /// cross-process path.
     Done,
@@ -295,6 +293,12 @@ pub fn exception_to_signal(vector: u32) -> Option<usize> {
 //==================================================================================================
 
 impl SignalDisposition {
+    /// Returns whether this disposition discards signal `signum`, even while it is blocked.
+    pub fn is_ignored(&self, signum: usize) -> bool {
+        matches!(self, Self::Ignore)
+            || (matches!(self, Self::Default) && default_action(signum) == DefaultAction::Ignore)
+    }
+
     ///
     /// # Description
     ///
@@ -351,7 +355,9 @@ impl SignalControl {
     ///
     /// # Description
     ///
-    /// Installs `disposition` for signal `signum`, returning the disposition it replaced.
+    /// Installs `disposition` for signal `signum`, returning the disposition it replaced. If the
+    /// new disposition ignores the signal, discards its process-directed pending instance.
+    /// The caller must also discard any thread-directed pending instances.
     ///
     /// # Parameters
     ///
@@ -371,7 +377,11 @@ impl SignalControl {
         let idx: usize = signum.wrapping_sub(1);
         let slot: &mut SignalDisposition =
             self.dispositions.get_mut(idx / 32)?.get_mut(idx % 32)?;
-        Some(::core::mem::replace(slot, disposition))
+        let previous: SignalDisposition = ::core::mem::replace(slot, disposition);
+        if slot.is_ignored(signum) {
+            self.pending &= !(1u64 << (signum - 1));
+        }
+        Some(previous)
     }
 
     ///
