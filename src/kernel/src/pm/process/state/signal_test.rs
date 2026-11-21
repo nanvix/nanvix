@@ -18,29 +18,33 @@ use super::signal::{
 };
 use crate::hal::mem::VirtualAddress;
 use ::alloc::boxed::Box;
-use ::sys::pm::{
-    SigAction,
-    SigSet,
-    SIGABRT,
-    SIGCHLD,
-    SIGCONT,
-    SIGFPE,
-    SIGHUP,
-    SIGILL,
-    SIGIO,
-    SIGKILL,
-    SIGQUIT,
-    SIGSEGV,
-    SIGSTOP,
-    SIGTERM,
-    SIGTRAP,
-    SIGTSTP,
-    SIGURG,
-    SIG_BLOCK,
-    SIG_DFL,
-    SIG_IGN,
-    SIG_SETMASK,
-    SIG_UNBLOCK,
+use ::sys::{
+    pm::{
+        SigAction,
+        SigSet,
+        SIGABRT,
+        SIGALRM,
+        SIGCHLD,
+        SIGCONT,
+        SIGFPE,
+        SIGHUP,
+        SIGILL,
+        SIGIO,
+        SIGKILL,
+        SIGQUIT,
+        SIGSEGV,
+        SIGSTOP,
+        SIGTERM,
+        SIGTRAP,
+        SIGTSTP,
+        SIGURG,
+        SIG_BLOCK,
+        SIG_DFL,
+        SIG_IGN,
+        SIG_SETMASK,
+        SIG_UNBLOCK,
+    },
+    time::SystemTime,
 };
 
 //==================================================================================================
@@ -586,6 +590,52 @@ fn test_reset_for_exec_discards_newly_ignored_signals() -> bool {
 // Test Aggregator
 //==================================================================================================
 
+/// Replacing and cancelling an alarm returns the remaining time rounded up.
+fn test_alarm_replace_and_cancel() -> bool {
+    let mut control: SignalControl = SignalControl::default();
+    let Some(later) = SystemTime::new(0, 1) else {
+        error!("failed to construct alarm test time");
+        return false;
+    };
+    if control.set_alarm(u32::MAX, SystemTime::EPOCH).ok() != Some(0)
+        || control.set_alarm(3, later).ok() != Some(u32::MAX)
+        || control.set_alarm(0, later).ok() != Some(3)
+        || control.set_alarm(0, later).ok() != Some(0)
+        || control.expire_alarm(later)
+    {
+        error!("alarm replacement, rounding, or cancellation failed");
+        return false;
+    }
+    true
+}
+
+/// Alarm deadlines survive exec, are excluded from fork, and fire only once.
+fn test_alarm_inheritance_and_expiry() -> bool {
+    let mut control: SignalControl = SignalControl::default();
+    let Some(deadline) = SystemTime::new(1, 0) else {
+        error!("failed to construct alarm deadline");
+        return false;
+    };
+    if control.set_alarm(1, SystemTime::EPOCH).is_err() {
+        error!("failed to arm test alarm");
+        return false;
+    }
+    let mut child: SignalControl = control.inherited_for_fork();
+    control.reset_for_exec();
+    if child.expire_alarm(deadline)
+        || control.expire_alarm(SystemTime::EPOCH)
+        || !control.expire_alarm(deadline)
+        || control.pending() != bit(SIGALRM)
+        || control.expire_alarm(deadline)
+        || control.set_alarm(0, deadline).ok() != Some(0)
+        || control.pending() != bit(SIGALRM)
+    {
+        error!("alarm inheritance, expiry, or pending-signal preservation failed");
+        return false;
+    }
+    true
+}
+
 ///
 /// # Description
 ///
@@ -613,5 +663,7 @@ pub(super) fn test() -> bool {
     passed &= run_test!(test_reset_for_exec_resets_caught_dispositions);
     passed &= run_test!(test_reset_for_exec_preserves_pending_signals);
     passed &= run_test!(test_reset_for_exec_discards_newly_ignored_signals);
+    passed &= run_test!(test_alarm_replace_and_cancel);
+    passed &= run_test!(test_alarm_inheritance_and_expiry);
     passed
 }

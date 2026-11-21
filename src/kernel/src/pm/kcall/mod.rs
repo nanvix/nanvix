@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod alarm;
 mod capctl;
 mod create_thread;
 mod detach_thread;
@@ -36,6 +37,7 @@ mod wait_cond;
 // Exports
 //==================================================================================================
 
+pub use alarm::alarm;
 pub use capctl::capctl;
 pub use create_thread::create_thread;
 pub use detach_thread::detach_thread;

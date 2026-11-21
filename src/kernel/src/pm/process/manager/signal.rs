@@ -58,6 +58,7 @@ use crate::{
         Vmem,
     },
     pm::{
+        clock,
         process::state::{
             sigframe::{
                 self,
@@ -73,6 +74,8 @@ use crate::{
                 RETADDR_SIZE,
             },
             signal::{
+                default_action,
+                DefaultAction,
                 SignalDisposition,
                 UNBLOCKABLE,
             },
@@ -111,8 +114,8 @@ pub enum SignalDeliveryOutcome {
     None,
     /// A signal frame was built and the thread was redirected to its handler.
     Delivered,
-    /// A frame could not be built safely; the caller must take the signal's default action and
-    /// terminate the process.
+    /// A pending signal has a fatal default action, or its frame could not be built safely.
+    /// The caller must terminate the process.
     Escalate,
 }
 
@@ -240,6 +243,27 @@ impl InterruptedContext<'_> {
 }
 
 impl ProcessManager {
+    ///
+    /// # Description
+    ///
+    /// Replaces a process's one-shot SIGALRM timer.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Calling process.
+    /// - `seconds`: Delay in seconds, or zero to cancel.
+    ///
+    /// # Returns
+    ///
+    /// The previous timer's remaining seconds, rounded up, or an error on failure.
+    ///
+    pub fn alarm(&mut self, pid: ProcessIdentifier, seconds: u32) -> Result<u32, Error> {
+        self.find_process_mut(pid)?
+            .state_mut()
+            .signals_mut()
+            .set_alarm(seconds, clock::now())
+    }
+
     ///
     /// # Description
     ///
@@ -409,12 +433,11 @@ impl ProcessManager {
         let tid: ThreadIdentifier = self.get_tid();
         let owner_tid: ThreadIdentifier = ThreadIdentifier::from(FPU_OWNER_TID.load(ORDER));
 
-        // Select the lowest-numbered deliverable, caught signal and capture its handler. The
+        // Select the lowest-numbered deliverable signal and capture its handler. The
         // deliverable set unions the process-directed pending set with the faulting thread's
-        // thread-directed pending set (synchronous faults target the thread). Pending signals whose
-        // disposition is not a handler (e.g. job-control stop/continue that `kill()` records for a
-        // later phase) are left pending and skipped, so they are neither discarded nor allowed to
-        // mask a higher-numbered caught signal in the same set.
+        // thread-directed pending set (synchronous faults target the thread). Fatal default actions
+        // are evaluated only after applying the thread's mask. Other non-handler dispositions are
+        // skipped so they cannot mask a higher-numbered caught signal in the same set.
         let (signum, entry, sa_mask, sa_flags): (usize, usize, u64, i32) = {
             let signals = self.get_running_mut().state_mut().signals_mut();
             let mut deliverable: u64 = (signals.pending() | thread_pending) & !blocked;
@@ -425,6 +448,14 @@ impl ProcessManager {
                 let signum: usize = (deliverable.trailing_zeros() as usize) + 1;
                 if let Some(SignalDisposition::Handler(handler)) = signals.disposition(signum) {
                     break (signum, handler.entry.into_raw_value(), handler.mask, handler.flags);
+                }
+                if matches!(signals.disposition(signum), Some(SignalDisposition::Default))
+                    && matches!(
+                        default_action(signum),
+                        DefaultAction::Terminate | DefaultAction::Core
+                    )
+                {
+                    return SignalDeliveryOutcome::Escalate;
                 }
                 // Not a caught signal: leave it pending for its own phase and consider the next.
                 deliverable &= deliverable - 1;

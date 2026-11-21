@@ -1078,6 +1078,29 @@ pub fn __kcall_gettime(buffer: &mut SystemTime) -> Result<(), Error> {
 ///
 /// # Description
 ///
+/// Replaces the calling process's one-shot SIGALRM timer.
+///
+/// # Parameters
+///
+/// - `seconds`: Delay in seconds, or zero to cancel the timer.
+///
+/// # Returns
+///
+/// The previous timer's remaining seconds, rounded up, or an error on failure.
+///
+#[unsafe(no_mangle)]
+pub fn __kcall_alarm(seconds: u32) -> Result<u32, Error> {
+    let result: i64 = kcall1!(KcallNumber::Alarm.into(), seconds);
+    if result < 0 {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to alarm()"))
+    } else {
+        Ok(result as u32)
+    }
+}
+
+///
+/// # Description
+///
 /// Puts the calling thread to sleep.
 ///
 /// # Parameters

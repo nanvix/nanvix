@@ -249,15 +249,14 @@ fn complete_signal_delivery(outcome: SignalDeliveryOutcome) {
     match outcome {
         SignalDeliveryOutcome::None | SignalDeliveryOutcome::Delivered => {},
         SignalDeliveryOutcome::Escalate => {
-            // The frame could not be built safely (for example, a corrupt user stack). Take the
-            // signal's default action and terminate the process. On success `exit()` switches
-            // context and never returns.
+            // A pending signal has a fatal default action, or its frame could not be built safely.
+            // On success `exit()` switches context and never returns.
             // SAFETY: the calling process is not the kernel and no borrow of the process manager is
             // held at this point.
             match unsafe { ProcessManager::exit(ExitStatus::from(ErrorCode::Interrupted)) } {
                 Ok(never) => never,
                 Err(error) => {
-                    error!("failed to terminate after unsafe signal frame (error={error:?})");
+                    error!("failed to terminate after signal (error={error:?})");
                 },
             }
         },

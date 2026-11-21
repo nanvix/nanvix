@@ -184,6 +184,11 @@ impl SleepingProcess {
     }
 
     pub fn wakeup_alarm(mut self, now: SystemTime) -> Result<InterruptedProcess, SleepingProcess> {
+        if self.state.signals_mut().expire_alarm(now) {
+            if let Some(tid) = self.candidate_tid_for(::sys::pm::SIGALRM) {
+                return self.interrupt_thread(tid, InterruptReason::Signaled);
+            }
+        }
         let (mut sleeping_threads_to_process, sleeping_thread) = self.sleeping_threads.pop_front();
 
         // Check if thread has an alarm set.
