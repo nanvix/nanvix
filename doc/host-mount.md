@@ -252,12 +252,13 @@ system.
 
 ### Test Configuration
 
-The test entry in `test/test-standalone-windows.toml`:
+The test entry in [test-standalone.toml](../test/test-standalone.toml), shared by both hosts:
 
 ```toml
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/mount-test.initrd"
+program = "./bin/test-rust-mount-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/mount-test-data"
 expected_output = "ok"
 expected_exit_code = 0

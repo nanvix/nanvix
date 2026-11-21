@@ -25,10 +25,8 @@ integration tests, and the combined test suite exposed through the `z` utility.
 ./z build -- run-nanvix-tests
 ```
 
-Test configurations are selected by host platform:
-
-- Linux: `test/test-standalone.toml`
-- Windows: `test/test-standalone-windows.toml`
+Linux and Windows share `test/test-standalone.toml`. The runner supplies host-native defaults;
+only Unix signal and KVM snapshot-save-exit tests are gated with `hosts = ["linux"]`.
 
 ## All Tests
 

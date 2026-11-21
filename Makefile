@@ -1061,12 +1061,8 @@ run-unit-tests: test-host-rlibs
 endif
 endif
 
-# Determine the standalone test configuration file based on the host.
-ifeq ($(IS_WINDOWS),yes)
-NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
-else
+# Share standalone test coverage across hosts.
 NANVIX_TEST_CONFIG := test/test-standalone.toml
-endif
 
 NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.$(HOST_BIN_EXT)
 
