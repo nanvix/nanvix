@@ -62,6 +62,7 @@ use ::sysapi::{
 /// - `fd`: File descriptor.
 /// - `chunk`: Mutable byte slice to read into (must not cross a page boundary).
 /// - `backend`: Destination and cancellation policy.
+/// - `initial_epoch`: Signal epoch retained across requests in this operation.
 ///
 /// # Returns
 ///
@@ -73,12 +74,13 @@ fn read_chunk(
     fd: RawFileDescriptor,
     chunk: &mut [u8],
     backend: ReadBackend,
+    initial_epoch: &mut Option<u32>,
 ) -> Result<(c_size_t, bool), Error> {
     let signal_mask: Option<crate::rpc::SignalMaskGuard> =
         if matches!(backend, ReadBackend::KernelConsole) {
             None
         } else {
-            Some(crate::rpc::SignalMaskGuard::block_all()?)
+            Some(crate::rpc::SignalMaskGuard::block_all_since(initial_epoch)?)
         };
 
     let (destination, message_type, pull_pid, pull_tid): (
@@ -355,6 +357,7 @@ fn read_ipc(
 
     let mut total_read: c_size_t = 0;
     let mut offset: usize = 0;
+    let mut initial_epoch: Option<u32> = None;
 
     while offset < buffer.len() {
         let chunk_size: usize =
@@ -362,7 +365,9 @@ fn read_ipc(
         let chunk: &mut [u8] = &mut buffer[offset..offset + chunk_size];
 
         let (count, interrupted): (c_size_t, bool) =
-            match super::util::retry_while_in_progress(|| read_chunk(tid, fd, chunk, backend)) {
+            match super::util::retry_while_in_progress(|| {
+                read_chunk(tid, fd, chunk, backend, &mut initial_epoch)
+            }) {
                 Ok(result) => result,
                 Err(error) if error.code == ErrorCode::Interrupted && total_read > 0 => break,
                 Err(error) => return Err(error),

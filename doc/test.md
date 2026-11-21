@@ -77,6 +77,10 @@ independent per-thread epochs without requiring user-space TLS.
 The `posix/test-c-signal-progress` suite uses `alarm()` with a handler without `SA_RESTART` to
 bound empty-pipe reads and full-pipe writes. It checks `EINTR` without progress, exact partial counts
 after one page is transferred, byte integrity, and cancellation of the remaining operation.
+Cleanup probes remain under a fatal watchdog. Additional synchronized read/write cases use
+`SA_RESTART` to suppress `EINTR`: another thread signals after one page of progress and releases
+one more page, verifying that a caught handler ends the compound operation even when kernel
+calls succeed.
 The existing `posix/test-c-signal-rpc` suite additionally checks nested handler RPCs and mailbox
 correlation.
 The `posix/test-c-stdio` suite covers formatted input from files, redirected standard input,

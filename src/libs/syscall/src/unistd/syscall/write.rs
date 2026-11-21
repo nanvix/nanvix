@@ -72,6 +72,7 @@ struct WriteBackend {
 /// - `fd`: File descriptor.
 /// - `chunk`: Byte slice to write.
 /// - `backend`: Destination and cancellation policy.
+/// - `initial_epoch`: Signal epoch retained across requests in this operation.
 ///
 /// # Returns
 ///
@@ -83,12 +84,13 @@ fn write_chunk(
     fd: RawFileDescriptor,
     chunk: &[u8],
     backend: WriteBackend,
+    initial_epoch: &mut Option<u32>,
 ) -> Result<(c_size_t, bool), Error> {
     let signal_mask: Option<crate::rpc::SignalMaskGuard> =
         if backend.push_pid == ProcessIdentifier::KERNEL {
             None
         } else {
-            Some(crate::rpc::SignalMaskGuard::block_all()?)
+            Some(crate::rpc::SignalMaskGuard::block_all_since(initial_epoch)?)
         };
 
     // Build metadata-only request and send it via IPC message.
@@ -370,6 +372,7 @@ fn write_ipc(
 
     let mut total_written: c_size_t = 0;
     let mut offset: usize = 0;
+    let mut initial_epoch: Option<u32> = None;
 
     while offset < buffer.len() {
         let chunk_size: usize =
@@ -377,7 +380,9 @@ fn write_ipc(
         let chunk: &[u8] = &buffer[offset..offset + chunk_size];
 
         let (written, interrupted): (c_size_t, bool) =
-            match super::util::retry_while_in_progress(|| write_chunk(tid, fd, chunk, backend)) {
+            match super::util::retry_while_in_progress(|| {
+                write_chunk(tid, fd, chunk, backend, &mut initial_epoch)
+            }) {
                 Ok(result) => result,
                 Err(error) if error.code == ErrorCode::Interrupted && total_written > 0 => break,
                 Err(error) => return Err(error),

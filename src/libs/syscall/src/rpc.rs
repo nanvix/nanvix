@@ -28,6 +28,7 @@ use ::sys::{
 /// Keeps signals blocked until a tagged bulk rendezvous is registered in the kernel.
 pub(crate) struct SignalMaskGuard {
     previous: SigSet,
+    epoch: u32,
 }
 
 impl SignalMaskGuard {
@@ -35,10 +36,21 @@ impl SignalMaskGuard {
     pub(crate) fn block_all() -> Result<Self, Error> {
         let blocked: SigSet = !0;
         let mut previous: SigSet = 0;
-        unsafe {
-            ::sys::kcall::pm::__kcall_sigprocmask(SIG_SETMASK, &blocked, &mut previous)?;
+        let epoch: u32 =
+            ::sys::kcall::pm::__kcall_sigcheckpoint(Some(&blocked), Some(&mut previous))?;
+        Ok(Self { previous, epoch })
+    }
+
+    /// Blocks signals and rejects another request after a caught handler in this operation.
+    pub(crate) fn block_all_since(initial_epoch: &mut Option<u32>) -> Result<Self, Error> {
+        let guard: Self = Self::block_all()?;
+        if initial_epoch.is_some_and(|initial| initial != guard.epoch) {
+            let reason: &str = "caught signal between I/O requests";
+            ::syslog::debug!("block_all_since(): {reason}");
+            return Err(Error::new(ErrorCode::Interrupted, reason));
         }
-        Ok(Self { previous })
+        *initial_epoch = Some(guard.epoch);
+        Ok(guard)
     }
 
     /// Returns the signal mask that the kernel should restore after registration.
@@ -49,12 +61,16 @@ impl SignalMaskGuard {
 
 impl Drop for SignalMaskGuard {
     fn drop(&mut self) {
-        unsafe {
-            let _result: Result<(), Error> = ::sys::kcall::pm::__kcall_sigprocmask(
+        // SAFETY: the saved mask remains valid for the duration of the kernel call.
+        let result: Result<(), Error> = unsafe {
+            ::sys::kcall::pm::__kcall_sigprocmask(
                 SIG_SETMASK,
                 &self.previous,
                 core::ptr::null_mut(),
-            );
+            )
+        };
+        if let Err(error) = result {
+            ::syslog::error!("SignalMaskGuard::drop(): failed to restore mask (error={error:?})");
         }
     }
 }
