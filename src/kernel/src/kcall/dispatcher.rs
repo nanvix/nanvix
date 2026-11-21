@@ -224,6 +224,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         KcallNumber::Sigsuspend => pm::sigsuspend(pid, tid, arg0),
         KcallNumber::SigRestorer => pm::sig_restorer(pid, arg0),
         KcallNumber::Alarm => pm::alarm(pid, arg0),
+        KcallNumber::Sigcheckpoint => pm::sigcheckpoint(pid, tid, arg0, arg1),
 
         // Unknown kernel call.
         _ => {

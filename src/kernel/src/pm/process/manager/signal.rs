@@ -583,6 +583,7 @@ impl ProcessManager {
                 let state = thread.thread_state_mut();
                 state.set_blocked(new_blocked);
                 state.clear_pending(signum);
+                state.record_signal_delivery();
             }
         }
         {
@@ -712,6 +713,7 @@ impl ProcessManager {
                 let state = thread.thread_state_mut();
                 state.set_blocked(new_blocked);
                 state.clear_pending(signum);
+                state.record_signal_delivery();
             }
         }
         {
