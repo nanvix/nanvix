@@ -221,43 +221,107 @@ unsafe fn syslog_inner(priority: c_int, format: *const c_char, args: VaList<'_>)
     } else {
         -1
     };
-    let ident_text: ::alloc::borrow::Cow<'_, str> =
-        ::alloc::string::String::from_utf8_lossy(ident_bytes);
-    let message_text: ::alloc::borrow::Cow<'_, str> =
-        ::alloc::string::String::from_utf8_lossy(&message);
-    let mut record: ::alloc::string::String = ::alloc::string::String::new();
-    let Some(record_capacity) = ident_text
+    let Some(record_capacity) = ident_bytes
         .len()
-        .checked_add(message_text.len())
+        .checked_add(message.len())
         .and_then(|length| length.checked_add(128))
     else {
+        ::syslog::error!("syslog(): log record length overflow");
         return;
     };
-    if record.try_reserve_exact(record_capacity).is_err() {
+    let Some(mut record) = FallibleBuffer::with_capacity(record_capacity) else {
         ::syslog::error!("syslog(): failed to allocate the log record");
         return;
-    }
+    };
     if timestamp < 0 {
-        let _ = write!(record, "[SYSLOG][unknown][{ident_text}]");
+        if write!(&mut record, "[SYSLOG][unknown][").is_err() {
+            ::syslog::error!("syslog(): failed to format the log record");
+            return;
+        }
     } else {
-        let _ = write!(record, "[SYSLOG][{timestamp}][{ident_text}]");
+        if write!(&mut record, "[SYSLOG][{timestamp}][").is_err() {
+            ::syslog::error!("syslog(): failed to format the log record");
+            return;
+        }
+    }
+    if record.write_bytes(ident_bytes).is_err() {
+        ::syslog::error!("syslog(): failed to format the log record");
+        return;
     }
     if options & LOG_PID != 0 {
         if pid >= 0 {
-            let _ = write!(record, "[{pid}]");
-        } else {
-            record.push_str("[pid=unknown]");
+            if write!(&mut record, "][{pid}]").is_err() {
+                ::syslog::error!("syslog(): failed to format the log record");
+                return;
+            }
+        } else if record.write_bytes(b"][pid=unknown]").is_err() {
+            ::syslog::error!("syslog(): failed to format the log record");
+            return;
         }
+    } else if record.write_bytes(b"]").is_err() {
+        ::syslog::error!("syslog(): failed to format the log record");
+        return;
     }
-    let _ = write!(record, "[{}:{}] ", facility_name(facility), severity_name(severity));
-    record.push_str(message_text.as_ref());
-    if !record.ends_with('\n') {
-        record.push('\n');
+    if write!(&mut record, "[{}:{}] ", facility_name(facility), severity_name(severity)).is_err() {
+        ::syslog::error!("syslog(): failed to format the log record");
+        return;
+    }
+    if record.write_bytes(&message).is_err() {
+        ::syslog::error!("syslog(): failed to format the log record");
+        return;
+    }
+    if record.last_byte() != Some(b'\n') && record.write_bytes(b"\n").is_err() {
+        ::syslog::error!("syslog(): failed to format the log record");
+        return;
     }
 
-    emit_console(record.as_bytes());
+    let record: ::alloc::vec::Vec<u8> = record.into_inner();
+    if let Some(console_record) = utf8_lossy(&record) {
+        emit_console(&console_record);
+    } else {
+        ::syslog::error!("syslog(): failed to allocate the console message");
+    }
     if options & LOG_PERROR != 0 {
-        emit_stderr(record.as_bytes());
+        emit_stderr(&record);
+    }
+}
+
+#[cfg(all(feature = "backend-nanvix", feature = "staticlib"))]
+struct FallibleBuffer {
+    bytes: ::alloc::vec::Vec<u8>,
+}
+
+#[cfg(all(feature = "backend-nanvix", feature = "staticlib"))]
+impl FallibleBuffer {
+    fn with_capacity(capacity: usize) -> Option<Self> {
+        let mut bytes: ::alloc::vec::Vec<u8> = ::alloc::vec::Vec::new();
+        bytes.try_reserve_exact(capacity).ok()?;
+        Some(Self { bytes })
+    }
+
+    fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), ()> {
+        self.bytes.try_reserve(bytes.len()).map_err(|_| ())?;
+        self.bytes.extend_from_slice(bytes);
+        Ok(())
+    }
+
+    fn last_byte(&self) -> Option<u8> {
+        self.bytes.last().copied()
+    }
+
+    fn into_inner(self) -> ::alloc::vec::Vec<u8> {
+        self.bytes
+    }
+}
+
+#[cfg(all(feature = "backend-nanvix", feature = "staticlib"))]
+impl ::core::fmt::Write for FallibleBuffer {
+    fn write_str(&mut self, value: &str) -> ::core::fmt::Result {
+        self.bytes
+            .try_reserve(value.len())
+            .map_err(|_| ::core::fmt::Error)?;
+        self.bytes.extend_from_slice(value.as_bytes());
+        Ok(())
     }
 }
 
@@ -345,6 +409,33 @@ fn emit_stderr(bytes: &[u8]) {
 }
 
 #[cfg(all(feature = "backend-nanvix", feature = "staticlib"))]
+fn utf8_lossy(bytes: &[u8]) -> Option<::alloc::vec::Vec<u8>> {
+    let mut output: ::alloc::vec::Vec<u8> = ::alloc::vec::Vec::new();
+    let mut offset: usize = 0;
+    while offset < bytes.len() {
+        let remaining: &[u8] = &bytes[offset..];
+        match ::core::str::from_utf8(remaining) {
+            Ok(_) => {
+                output.try_reserve(remaining.len()).ok()?;
+                output.extend_from_slice(remaining);
+                return Some(output);
+            },
+            Err(error) => {
+                let valid_len: usize = error.valid_up_to();
+                let invalid_len: usize = error.error_len().unwrap_or(remaining.len() - valid_len);
+                let next_offset: usize = offset.checked_add(valid_len)?.checked_add(invalid_len)?;
+                let required_capacity: usize = valid_len.checked_add(3)?;
+                output.try_reserve(required_capacity).ok()?;
+                output.extend_from_slice(&remaining[..valid_len]);
+                output.extend_from_slice(b"\xEF\xBF\xBD");
+                offset = next_offset;
+            },
+        }
+    }
+    Some(output)
+}
+
+#[cfg(all(feature = "backend-nanvix", feature = "staticlib"))]
 unsafe fn expand_errno_specifiers(
     format: *const c_char,
     error_number: c_int,
@@ -378,7 +469,10 @@ unsafe fn expand_errno_specifiers(
                         error_bytes.iter().try_fold(0usize, |length, byte| {
                             length.checked_add(if *byte == b'%' { 2 } else { 1 })
                         })?;
-                    expanded.try_reserve(escaped_len).ok()?;
+                    let remaining_len: usize = format_bytes.len() - index - 2;
+                    let required_capacity: usize =
+                        escaped_len.checked_add(remaining_len)?.checked_add(1)?;
+                    expanded.try_reserve(required_capacity).ok()?;
                     for byte in error_bytes {
                         if *byte == b'%' {
                             expanded.extend_from_slice(b"%%");
