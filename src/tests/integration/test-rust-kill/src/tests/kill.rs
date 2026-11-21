@@ -79,6 +79,7 @@ use ::sys::{
         SIGCHLD,
         SIGCONT,
         SIGKILL,
+        SIGQUIT,
         SIGSTOP,
         SIGTERM,
         SIGTSTP,
@@ -140,6 +141,9 @@ const INTERRUPTIBLE_SLEEP_SECS: time_t = 10;
 
 /// Number of microseconds in a second.
 const MICROSECONDS_PER_SECOND: time_t = 1_000_000;
+
+/// Parent-side watchdog for a child receiving with a pending default-fatal signal.
+const RECEIVE_WATCHDOG_SECONDS: u32 = 5;
 
 //==================================================================================================
 // Wait Selection
@@ -332,6 +336,40 @@ fn kill_child_in_state(wait: ChildWait, signum: c_int) -> Result<(), Error> {
 /// Verifies that `SIGTERM` terminates a process blocked indefinitely in a kernel wait.
 fn test_kill_sleeping_process() -> Result<(), Error> {
     kill_child_in_state(ChildWait::Recv, as_signum(SIGTERM)?)
+}
+
+/// Queues a caught signal while blocked, changes it to default, then unmasks it inside receive.
+fn receive_pending_default(signum: usize) -> Result<Message, Error> {
+    let mask: SigSet = 1u64 << (signum - 1);
+    pm::__kcall_sigcheckpoint(Some(&mask), None)?;
+    let caught: SigAction = SigAction {
+        sa_handler: sigusr1_handler_addr(),
+        ..SigAction::default()
+    };
+    let default: SigAction = SigAction::default();
+    // SAFETY: both action buffers remain valid and no previous-action output is requested.
+    unsafe { pm::__kcall_sigaction(as_signum(signum)?, &caught, ptr::null_mut())? };
+    pm::__kcall_kill(pm::getpid()?, as_signum(signum)?)?;
+    // SAFETY: the default action buffer remains valid and no output is requested.
+    unsafe { pm::__kcall_sigaction(as_signum(signum)?, &default, ptr::null_mut())? };
+    ipc::__kcall_recv_restoring_signals(0)
+}
+
+/// Verifies pending terminate/core defaults prevent an empty-mailbox receive from sleeping.
+fn test_receive_pending_default(signum: usize) -> Result<(), Error> {
+    // The parent must fail if its child remains parked; the child does not inherit this alarm.
+    assert_eq!(pm::__kcall_alarm(RECEIVE_WATCHDOG_SECONDS)?, 0);
+    let ret: pid_t = bindings::fork::fork();
+    if ret == 0 {
+        let result: Result<Message, Error> = receive_pending_default(signum);
+        ::syslog::error!("default-fatal receive unexpectedly returned (result={result:?})");
+        // SAFETY: this child must terminate here instead of continuing the parent test flow.
+        unsafe { bindings::_exit::_exit(CHILD_NOT_KILLED) };
+    }
+    assert!(ret > 0, "fork() failed in parent (ret={ret})");
+    reap_killed(ProcessIdentifier::from(ret));
+    pm::__kcall_alarm(0)?;
+    Ok(())
 }
 
 /// Verifies that `SIGTERM` terminates a process that is runnable and actively consuming CPU.
@@ -1680,6 +1718,8 @@ fn test_sigchld_delivered_on_child_exit() -> Result<(), Error> {
 /// Runs every `kill()` test.
 pub fn run() -> Result<(), Error> {
     test_kill_sleeping_process()?;
+    test_receive_pending_default(SIGUSR1)?;
+    test_receive_pending_default(SIGQUIT)?;
     test_kill_running_process()?;
     test_kill_interrupted_process()?;
     test_sigkill_terminates_sleeping_process()?;
