@@ -61,23 +61,26 @@ use ::sysapi::{
 /// - `tid`: Thread identifier of the calling thread.
 /// - `fd`: File descriptor.
 /// - `chunk`: Mutable byte slice to read into (must not cross a page boundary).
+/// - `backend`: Destination and cancellation policy.
+/// - `initial_epoch`: Signal epoch retained across requests in this operation.
 ///
 /// # Returns
 ///
-/// Upon successful completion, the number of bytes read is returned. Otherwise, an
-/// error is returned.
+/// Returns the number of bytes read and whether a signal interrupted the operation. An
+/// interruption with no progress returns an error instead.
 ///
 fn read_chunk(
     tid: ThreadIdentifier,
     fd: RawFileDescriptor,
     chunk: &mut [u8],
     backend: ReadBackend,
-) -> Result<c_size_t, Error> {
+    initial_epoch: &mut Option<u32>,
+) -> Result<(c_size_t, bool), Error> {
     let signal_mask: Option<crate::rpc::SignalMaskGuard> =
         if matches!(backend, ReadBackend::KernelConsole) {
             None
         } else {
-            Some(crate::rpc::SignalMaskGuard::block_all()?)
+            Some(crate::rpc::SignalMaskGuard::block_all_since(initial_epoch)?)
         };
 
     let (destination, message_type, pull_pid, pull_tid): (
@@ -230,7 +233,7 @@ fn read_chunk(
                 }
             }
 
-            Ok(count as c_size_t)
+            Ok((count as c_size_t, interrupted.is_some()))
         },
         header => {
             ::syslog::warn!(
@@ -295,8 +298,9 @@ fn cancel_console_read(
 ///
 /// # Returns
 ///
-/// Upon successful completion, `read()` returns the number of bytes read. Otherwise, it returns an
-/// error.
+/// Upon successful completion, `read()` returns the number of bytes read. A caught signal ends the
+/// read with the count already transferred, or `Interrupted` if no bytes were transferred.
+/// Otherwise, it returns an error.
 ///
 pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error> {
     // Skip logging for stdin to avoid spamming the output.
@@ -353,14 +357,21 @@ fn read_ipc(
 
     let mut total_read: c_size_t = 0;
     let mut offset: usize = 0;
+    let mut initial_epoch: Option<u32> = None;
 
     while offset < buffer.len() {
         let chunk_size: usize =
             page_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &mut [u8] = &mut buffer[offset..offset + chunk_size];
 
-        let count: c_size_t =
-            super::util::retry_while_in_progress(|| read_chunk(tid, fd, chunk, backend))?;
+        let (count, interrupted): (c_size_t, bool) =
+            match super::util::retry_while_in_progress(|| {
+                read_chunk(tid, fd, chunk, backend, &mut initial_epoch)
+            }) {
+                Ok(result) => result,
+                Err(error) if error.code == ErrorCode::Interrupted && total_read > 0 => break,
+                Err(error) => return Err(error),
+            };
 
         // EOF or zero-length read.
         if count == 0 {
@@ -370,14 +381,14 @@ fn read_ipc(
         total_read += count;
         offset += count as usize;
 
-        // A short reply ends the read. Because the chunk never spans more than one page (see
+        // A signal or short reply ends the read. Because the chunk never spans more than one page (see
         // `page_chunk_size`) and the IKC backends deliver up to a full page per request, receiving
         // fewer bytes than requested means the input is exhausted: end-of-file for a regular file,
         // or no more bytes currently available for a stream. Continuing here would truncate neither
         // a multi-page file (the next page is fetched on the following iteration) nor block a
         // partially-filled stream. Do not switch this loop to multi-page chunks without revisiting
         // this guard: a capped multi-page reply is indistinguishable from genuine end-of-input.
-        if (count as usize) < chunk_size {
+        if interrupted || (count as usize) < chunk_size {
             break;
         }
     }
