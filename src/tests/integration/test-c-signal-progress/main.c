@@ -6,6 +6,9 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <pthread.h>
+#include <sched.h>
 #include <signal.h>
 #include <string.h>
 #include <time.h>
@@ -20,7 +23,9 @@
 
 static _Alignas(PAGE_SIZE) unsigned char buffer[2 * PAGE_SIZE];
 static _Alignas(PAGE_SIZE) unsigned char filler[PAGE_SIZE];
+static _Alignas(PAGE_SIZE) unsigned char restart_buffer[3 * PAGE_SIZE];
 static volatile sig_atomic_t alarm_count;
+static volatile sig_atomic_t restart_count;
 
 static void handle_alarm(int signum)
 {
@@ -45,7 +50,7 @@ static void start_alarm(struct timespec *start)
 static void check_alarm(const struct timespec *start)
 {
     struct timespec end;
-    alarm(0);
+    alarm(RETURN_BOUND_SECONDS);
     assert(clock_gettime(CLOCK_MONOTONIC, &end) == 0);
     assert(alarm_count == 1);
     long long elapsed_ns = (long long)(end.tv_sec - start->tv_sec) * 1000000000LL +
@@ -82,6 +87,7 @@ static void check_probe(const int pipefd[2])
     assert(actual == expected);
     assert(close(pipefd[0]) == 0);
     assert(close(pipefd[1]) == 0);
+    alarm(0);
 }
 
 static void test_read(size_t available)
@@ -159,6 +165,86 @@ static void test_write(size_t room)
     check_probe(pipefd);
 }
 
+static void handle_restart_signal(int signum)
+{
+    (void)signum;
+    restart_count++;
+}
+
+struct restart_args {
+    int *pipefd;
+    int writing;
+};
+
+static void *release_after_signal(void *arg)
+{
+    struct restart_args *args = arg;
+    sigset_t blocked;
+    assert(sigemptyset(&blocked) == 0);
+    assert(sigaddset(&blocked, SIGUSR1) == 0);
+    assert(sigprocmask(SIG_BLOCK, &blocked, NULL) == 0);
+
+    // Wait until the main thread consumes its first page of space or data.
+    struct pollfd watched = {
+        .fd = args->pipefd[args->writing ? 1 : 0],
+        .events = args->writing ? POLLOUT : POLLIN,
+    };
+    for (;;) {
+        int ready = poll(&watched, 1, 0);
+        assert(ready >= 0);
+        if (ready == 0) {
+            break;
+        }
+        assert(watched.revents == watched.events);
+        assert(sched_yield() == 0);
+    }
+
+    // Only the main thread can catch this signal. Let a restarted transfer finish, but
+    // leave the following request blocked if the I/O loop forgets the handler delivery.
+    assert(kill(getpid(), SIGUSR1) == 0);
+    if (args->writing) {
+        unsigned char page[PAGE_SIZE];
+        assert(read(args->pipefd[0], page, sizeof(page)) == sizeof(page));
+    } else {
+        assert(write(args->pipefd[1], filler, sizeof(filler)) == sizeof(filler));
+    }
+    return (NULL);
+}
+
+static void test_successful_signal_delivery(int writing)
+{
+    int pipefd[2];
+    assert(pipe(pipefd) == 0);
+    if (writing) {
+        fill_pipe(pipefd[1]);
+        assert(read(pipefd[0], buffer, PAGE_SIZE) == PAGE_SIZE);
+    } else {
+        assert(write(pipefd[1], filler, sizeof(filler)) == sizeof(filler));
+    }
+    memset(restart_buffer, WRITE_BYTE, sizeof(restart_buffer));
+
+    restart_count = 0;
+    alarm_count = 1;
+    alarm(RETURN_BOUND_SECONDS);
+    struct restart_args args = {.pipefd = pipefd, .writing = writing};
+    pthread_t worker;
+    assert(pthread_create(&worker, NULL, release_after_signal, &args) == 0);
+    ssize_t count = writing ? write(pipefd[1], restart_buffer, sizeof(restart_buffer))
+                            : read(pipefd[0], restart_buffer, sizeof(restart_buffer));
+    assert(count >= PAGE_SIZE && count <= 2 * PAGE_SIZE);
+    assert(count % PAGE_SIZE == 0);
+    assert(pthread_join(worker, NULL) == 0);
+    assert(restart_count == 1);
+    if (!writing) {
+        for (ssize_t i = 0; i < count; i++) {
+            assert(restart_buffer[i] == FILL_BYTE);
+        }
+    }
+    assert(close(pipefd[0]) == 0);
+    assert(close(pipefd[1]) == 0);
+    alarm(0);
+}
+
 int main(void)
 {
     struct sigaction action = {0};
@@ -171,5 +257,11 @@ int main(void)
     test_write(0);
     test_write(PAGE_SIZE);
     test_read(PAGE_SIZE);
+
+    action.sa_handler = handle_restart_signal;
+    action.sa_flags = SA_RESTART;
+    assert(sigaction(SIGUSR1, &action, NULL) == 0);
+    test_successful_signal_delivery(1);
+    test_successful_signal_delivery(0);
     return (0);
 }
