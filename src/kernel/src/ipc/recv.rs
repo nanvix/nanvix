@@ -61,7 +61,21 @@ pub(crate) unsafe fn recv_with<F>(
 where
     F: FnOnce(&Message) -> Result<(), Error>,
 {
-    let delivery: PendingDelivery = EventManager::wait(tid, pid)?;
+    recv_with_signal_mask(tid, pid, None, copy_to_user)
+}
+
+/// Receives and commits a copied delivery under the selected signal-mask policy.
+///
+/// # Safety
+///
+/// The requirements of [`recv_with`] apply.
+unsafe fn recv_with_signal_mask(
+    tid: ThreadIdentifier,
+    pid: ProcessIdentifier,
+    signal_mask: Option<SigSet>,
+    copy_to_user: impl FnOnce(&Message) -> Result<(), Error>,
+) -> Result<(), SleepError> {
+    let delivery: PendingDelivery = EventManager::wait(tid, pid, signal_mask)?;
     copy_to_user(delivery.message()).map_err(SleepError::Generic)?;
     EventManager::commit(delivery);
     Ok(())
@@ -105,7 +119,8 @@ pub unsafe fn recv(
 ///
 /// Restores the calling thread's signal mask and receives a message without a user-space gap.
 /// A newly unblocked pending signal can interrupt the event wait instead of being consumed before
-/// the thread starts waiting.
+/// the thread starts waiting. Pending signals are checked again before every sleep if a competing
+/// receiver consumes the message that woke this thread.
 ///
 /// # Parameters
 ///
@@ -129,7 +144,9 @@ pub unsafe fn recv_restoring_signals(
     mask: SigSet,
 ) -> Result<(), SleepError> {
     match ProcessManager::get_mut().restore_wait_signal_mask(pid, tid, mask) {
-        Ok(false) => recv(tid, pid, msg),
+        Ok(false) => recv_with_signal_mask(tid, pid, Some(mask), |message| {
+            pm::copy_to_user(ProcessManager::get_mut(), pid, msg as *mut Message, message)
+        }),
         Ok(true) => Err(SleepError::Interrupted(InterruptReason::Signaled)),
         Err(error) => {
             error!("recv_restoring_signals(): failed to restore mask (error={error:?})");

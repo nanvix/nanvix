@@ -75,6 +75,8 @@ The `test-rust-kernel` signal-checkpoint tests verify caught-signal delivery alo
 kernel calls, nested handlers, pending and ignored signals, unsigned kernel-call results, and
 independent per-thread epochs without requiring user-space TLS. They also verify that atomically
 restoring a mask while receiving lets a pending caught signal interrupt an empty-mailbox wait.
+A competing-receiver case checks that a message wakeup followed by a signal cannot leave a
+receiver sleeping again after its masked sibling consumes the message.
 The `test-rust-kill` suite verifies that a signal queued while caught and blocked, then changed
 to a terminate/core default, prevents that receive from sleeping. A parent-side alarm bounds
 both child-termination regressions.

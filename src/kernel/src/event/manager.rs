@@ -70,6 +70,7 @@ use ::sys::{
     pm::{
         Capability,
         ProcessIdentifier,
+        SigSet,
         ThreadIdentifier,
     },
 };
@@ -1303,6 +1304,7 @@ impl EventManager {
     ///
     /// - `tid`: Identifier of the waiting thread.
     /// - `pid`: Identifier of the waiting process.
+    /// - `signal_mask`: Optional mask to restore and check before each sleep.
     ///
     /// # Returns
     ///
@@ -1323,6 +1325,7 @@ impl EventManager {
     pub(crate) unsafe fn wait(
         tid: ThreadIdentifier,
         pid: ProcessIdentifier,
+        signal_mask: Option<SigSet>,
     ) -> Result<PendingDelivery, SleepError> {
         let wait: Condvar = EventManager::get()
             .map_err(SleepError::Generic)?
@@ -1345,6 +1348,19 @@ impl EventManager {
 
             if let Some(delivery) = delivery {
                 break Ok(delivery);
+            }
+
+            if let Some(mask) = signal_mask {
+                match ProcessManager::get_mut().restore_wait_signal_mask(pid, tid, mask) {
+                    Ok(true) => {
+                        return Err(SleepError::Interrupted(InterruptReason::Signaled));
+                    },
+                    Ok(false) => {},
+                    Err(error) => {
+                        error!("wait(): failed to restore signal mask (error={error:?})");
+                        return Err(SleepError::Generic(error));
+                    },
+                }
             }
 
             // Wait for an event to be delivered.
