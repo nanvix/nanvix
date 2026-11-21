@@ -178,8 +178,8 @@ pub fn sg_chunk_size(ptr: usize, remaining: usize) -> usize {
 /// for streams -- so the read loop can stop without truncating a multi-page file or blocking a
 /// partially-filled stream. A multi-page request would instead be capped by the backend, and the
 /// resulting short reply would be indistinguishable from EOF. The write path has no such ambiguity
-/// (the whole source buffer is already available, so it loops until no forward progress is made)
-/// and therefore keeps using [`sg_chunk_size`].
+/// (the whole source buffer is already available, so it loops until interrupted or no forward
+/// progress is made) and therefore keeps using [`sg_chunk_size`].
 ///
 /// # Parameters
 ///
