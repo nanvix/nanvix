@@ -75,7 +75,8 @@ impl SleepingProcess {
     /// # Description
     ///
     /// Returns the identifier of a candidate thread that can take delivery of signal `signum`, i.e.
-    /// a sleeping thread that does not currently block it.
+    /// a sleeping thread that does not currently block it. A thread-directed signal must also be
+    /// pending against that thread rather than a different thread.
     ///
     /// A blocked signal must remain pending rather than interrupt a blocking call, so a thread whose
     /// mask blocks `signum` is not a valid interruption candidate.
@@ -91,10 +92,21 @@ impl SleepingProcess {
     ///
     pub fn candidate_tid_for(&self, signum: usize) -> Option<ThreadIdentifier> {
         let bit: u64 = 1u64 << (signum - 1);
+        let process_pending: bool = (self.state.signals().pending() & bit) != 0;
         self.sleeping_threads
             .iter()
-            .find(|thread| (thread.thread_state().blocked() & bit) == 0)
+            .find(|thread| {
+                let state = thread.thread_state();
+                (state.blocked() & bit) == 0 && (process_pending || (state.pending() & bit) != 0)
+            })
             .map(|thread| thread.id())
+    }
+
+    /// Visits the sleeping threads, excluding zombies.
+    pub(super) fn for_each_live_thread_mut(&mut self, mut visit: impl FnMut(ThreadRefMut<'_>)) {
+        for thread in self.sleeping_threads.iter_mut() {
+            visit(ThreadRefMut::Sleeping(thread));
+        }
     }
 
     ///

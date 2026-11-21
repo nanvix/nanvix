@@ -31,6 +31,9 @@ use crate::{
             new_test_thread_termination_credit,
             state::{
                 signal::{
+                    default_action,
+                    DefaultAction,
+                    KillOutcome,
                     SignalControl,
                     SignalDisposition,
                     SignalHandler,
@@ -79,10 +82,15 @@ use ::sys::{
         ThreadCreateArgs,
         ThreadIdentifier,
         SIGCHLD,
+        SIGCONT,
+        SIGQUIT,
         SIGTERM,
+        SIGTSTP,
         SIGUSR1,
         SIGUSR2,
         SIGWINCH,
+        SIG_BLOCK,
+        SIG_UNBLOCK,
     },
     ExitStatus,
 };
@@ -207,6 +215,23 @@ fn test_tid() -> ThreadIdentifier {
 /// Returns the bit for signal `signum` (1-based) in a signal set.
 fn signal_bit(signum: usize) -> SigSet {
     1u64 << (signum - 1)
+}
+
+/// Creates a credited ready thread with signal state for a local process-manager fixture.
+fn signal_thread(tid: ThreadIdentifier, blocked: SigSet, pending: SigSet) -> ReadyThread {
+    let mut thread: ReadyThread = ReadyThread::new(
+        tid,
+        Some(new_test_thread_termination_credit()),
+        None,
+        None,
+        None,
+        ContextInformation::default(),
+        // SAFETY: the in-kernel test runner serializes FPU initialization.
+        unsafe { FpuState::new() },
+    );
+    thread.thread_state_mut().set_blocked(blocked);
+    thread.thread_state_mut().set_pending(pending);
+    thread
 }
 
 ///
@@ -1448,6 +1473,280 @@ fn caught_disposition() -> SignalDisposition {
     }))
 }
 
+/// Verifies that blocked default terminate, core, and stop signals remain pending.
+fn test_blocked_default_signals_stay_pending() -> bool {
+    for signum in [SIGTERM, SIGQUIT, SIGTSTP] {
+        let Some(mut manager) = new_user_process_manager() else {
+            return false;
+        };
+        let pid: ProcessIdentifier = manager.get_pid();
+        let tid: ThreadIdentifier = manager.get_tid();
+        let bit: SigSet = signal_bit(signum);
+        if let Err(error) = manager.sigprocmask(tid, SIG_BLOCK, Some(bit)) {
+            error!("failed to block default signal (error={error:?})");
+            return false;
+        }
+        let outcome: KillOutcome = match manager.kill(pid, pid, signum) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                error!("failed to post blocked default signal (error={error:?})");
+                return false;
+            },
+        };
+        let pending: SigSet = manager.get_running().state().signals().pending();
+        let stopped: bool = manager.get_running().state().is_stopped();
+        if outcome != KillOutcome::Done || pending != bit || stopped {
+            error!(
+                "blocked default signal was not retained (signum={signum}, outcome={outcome:?}, \
+                 pending={pending:#x}, stopped={stopped})"
+            );
+            return false;
+        }
+        if manager.deliver_pending_default_signal().is_some() {
+            error!("a blocked default action was delivered (signum={signum})");
+            return false;
+        }
+        if let Err(error) = manager.sigprocmask(tid, SIG_UNBLOCK, Some(bit)) {
+            error!("failed to unblock default signal (error={error:?})");
+            return false;
+        }
+        let action: Option<DefaultAction> = manager.deliver_pending_default_signal();
+        if action != Some(default_action(signum))
+            || manager.get_running().state().signals().pending() != 0
+        {
+            error!(
+                "unblocking did not consume the default action (signum={signum}, \
+                 action={action:?})"
+            );
+            return false;
+        }
+    }
+    true
+}
+
+/// Verifies that ignored dispositions discard process- and thread-directed pending signals.
+fn test_sigaction_discards_pending_ignored_signals() -> bool {
+    for (signum, disposition) in [
+        (SIGTERM, SignalDisposition::Ignore),
+        (SIGCHLD, SignalDisposition::Default),
+    ] {
+        let Some(mut manager) = new_user_process_manager() else {
+            return false;
+        };
+        let pid: ProcessIdentifier = manager.get_pid();
+        let tid: ThreadIdentifier = manager.get_tid();
+        let other_tid: ThreadIdentifier = test_tid();
+        let queued: SigSet = signal_bit(signum) | signal_bit(SIGUSR2);
+        manager
+            .get_running_mut()
+            .add_thread(signal_thread(other_tid, queued, queued));
+        if let Err(error) =
+            manager.sigprocmask(tid, SIG_BLOCK, Some(signal_bit(signum) | signal_bit(SIGUSR2)))
+        {
+            error!("failed to block caught signal (error={error:?})");
+            return false;
+        }
+        if let Err(error) = manager.sigaction(pid, signum, Some(caught_disposition())) {
+            error!("failed to install caught disposition (error={error:?})");
+            return false;
+        }
+        if let Err(error) = manager.kill(pid, pid, signum) {
+            error!("failed to queue caught signal (error={error:?})");
+            return false;
+        }
+        manager
+            .get_running_mut()
+            .state_mut()
+            .signals_mut()
+            .post(SIGUSR2);
+        {
+            let state = manager.get_running_mut().running_mut().thread_state_mut();
+            state.post_pending(signum);
+            state.post_pending(SIGUSR2);
+        }
+        if let Err(error) = manager.sigaction(pid, signum, Some(disposition)) {
+            error!("failed to change pending signal disposition (error={error:?})");
+            return false;
+        }
+        let process_pending: SigSet = manager.get_running().state().signals().pending();
+        let thread_pending: SigSet = manager
+            .get_running_mut()
+            .running_mut()
+            .thread_state()
+            .pending();
+        let Some(other_thread) = manager.get_running().find_thread(other_tid) else {
+            error!("ready signal-test thread disappeared");
+            return false;
+        };
+        let other_pending: SigSet = other_thread.thread_state().pending();
+        if process_pending != signal_bit(SIGUSR2)
+            || thread_pending != signal_bit(SIGUSR2)
+            || other_pending != signal_bit(SIGUSR2)
+        {
+            error!(
+                "ignored pending signal survived sigaction (signum={signum}, \
+                 process_pending={process_pending:#x}, thread_pending={thread_pending:#x})"
+            );
+            return false;
+        }
+    }
+    true
+}
+
+/// Verifies that process-directed defaults use all live masks, but thread-directed defaults do not.
+fn test_pending_default_signal_respects_target_masks() -> bool {
+    for thread_directed in [false, true] {
+        let Some(mut manager) = new_user_process_manager() else {
+            return false;
+        };
+        let pid: ProcessIdentifier = manager.get_pid();
+        let tid: ThreadIdentifier = manager.get_tid();
+        let other_tid: ThreadIdentifier = test_tid();
+        let bit: SigSet = signal_bit(SIGTERM);
+        manager
+            .get_running_mut()
+            .add_thread(signal_thread(other_tid, bit, 0));
+        if let Err(error) = manager.sigprocmask(tid, SIG_BLOCK, Some(bit)) {
+            error!("failed to block target thread (error={error:?})");
+            return false;
+        }
+        if thread_directed {
+            manager
+                .get_running_mut()
+                .running_mut()
+                .thread_state_mut()
+                .post_pending(SIGTERM);
+        } else if let Err(error) = manager.kill(pid, pid, SIGTERM) {
+            error!("failed to queue process-directed signal (error={error:?})");
+            return false;
+        }
+        if let Err(error) = manager.sigprocmask(other_tid, SIG_UNBLOCK, Some(bit)) {
+            error!("failed to unblock second thread (error={error:?})");
+            return false;
+        }
+        let action: Option<DefaultAction> = manager.deliver_pending_default_signal();
+        if thread_directed {
+            if action.is_some() {
+                error!("another thread's mask permitted a thread-directed default");
+                return false;
+            }
+            if let Err(error) = manager.sigprocmask(tid, SIG_UNBLOCK, Some(bit)) {
+                error!("failed to unblock directed target (error={error:?})");
+                return false;
+            }
+            if manager.deliver_pending_default_signal() != Some(default_action(SIGTERM)) {
+                error!("unblocking the directed target did not deliver its default");
+                return false;
+            }
+        } else if action != Some(default_action(SIGTERM)) {
+            error!("an eligible second thread did not permit a process-directed default");
+            return false;
+        }
+    }
+    true
+}
+
+/// Verifies that blocked stop/continue generation cancels opposite pending signals on all threads.
+fn test_blocked_job_control_discards_opposite_pending() -> bool {
+    let Some(mut manager) = new_user_process_manager() else {
+        return false;
+    };
+    let pid: ProcessIdentifier = manager.get_pid();
+    let tid: ThreadIdentifier = manager.get_tid();
+    if let Err(error) =
+        manager.sigprocmask(tid, SIG_BLOCK, Some(signal_bit(SIGCONT) | signal_bit(SIGTSTP)))
+    {
+        error!("failed to block job-control signals (error={error:?})");
+        return false;
+    }
+    manager
+        .get_running_mut()
+        .state_mut()
+        .signals_mut()
+        .post(SIGCONT);
+    manager
+        .get_running_mut()
+        .running_mut()
+        .thread_state_mut()
+        .post_pending(SIGCONT);
+    if let Err(error) = manager.kill(pid, pid, SIGTSTP) {
+        error!("failed to post blocked stop (error={error:?})");
+        return false;
+    }
+    if manager.get_running().state().signals().pending() != signal_bit(SIGTSTP)
+        || manager
+            .get_running_mut()
+            .running_mut()
+            .thread_state()
+            .pending()
+            != 0
+    {
+        error!("blocked stop generation did not discard pending continue instances");
+        return false;
+    }
+    manager
+        .get_running_mut()
+        .running_mut()
+        .thread_state_mut()
+        .post_pending(SIGTSTP);
+    if let Err(error) = manager.kill(pid, pid, SIGCONT) {
+        error!("failed to post blocked continue (error={error:?})");
+        return false;
+    }
+    if manager.get_running().state().signals().pending() != 0
+        || manager
+            .get_running_mut()
+            .running_mut()
+            .thread_state()
+            .pending()
+            != 0
+    {
+        error!("blocked continue generation did not discard pending stop instances");
+        return false;
+    }
+    true
+}
+
+/// Verifies that mask restoration handles pending defaults before a rendezvous can sleep.
+fn test_rendezvous_mask_reconciles_pending_defaults() -> bool {
+    for signum in [SIGTERM, SIGTSTP] {
+        let Some(mut manager) = new_user_process_manager() else {
+            return false;
+        };
+        let pid: ProcessIdentifier = manager.get_pid();
+        let tid: ThreadIdentifier = manager.get_tid();
+        let bit: SigSet = signal_bit(signum);
+        if let Err(error) = manager.sigprocmask(tid, SIG_BLOCK, Some(bit)) {
+            error!("failed to block rendezvous default (error={error:?})");
+            return false;
+        }
+        if let Err(error) = manager.kill(pid, pid, signum) {
+            error!("failed to queue rendezvous default (error={error:?})");
+            return false;
+        }
+        let interrupted: bool = match manager.restore_rendezvous_signal_mask(pid, tid, 0) {
+            Ok(interrupted) => interrupted,
+            Err(error) => {
+                error!("failed to restore rendezvous mask (error={error:?})");
+                return false;
+            },
+        };
+        let fatal: bool = signum == SIGTERM;
+        if interrupted != fatal
+            || manager.get_running().state().is_stopped() == fatal
+            || (!fatal && manager.get_running().state().signals().pending() != 0)
+        {
+            error!("rendezvous mask did not reconcile default (signum={signum})");
+            return false;
+        }
+        if fatal && manager.deliver_pending_default_signal() != Some(default_action(signum)) {
+            error!("rendezvous consumed a fatal signal before its return checkpoint");
+            return false;
+        }
+    }
+    true
+}
+
 ///
 /// # Description
 ///
@@ -2040,6 +2339,11 @@ pub(in crate::pm::process) fn test() -> bool {
     passed &= run_test!(test_exec_replacement_produces_thread_termination_only);
     passed &= run_test!(test_exec_replacement_inherits_signal_mask);
     passed &= run_test!(test_exec_replacement_preserves_pending_signals);
+    passed &= run_test!(test_sigaction_discards_pending_ignored_signals);
+    passed &= run_test!(test_blocked_default_signals_stay_pending);
+    passed &= run_test!(test_pending_default_signal_respects_target_masks);
+    passed &= run_test!(test_blocked_job_control_discards_opposite_pending);
+    passed &= run_test!(test_rendezvous_mask_reconciles_pending_defaults);
     passed &= run_test!(test_ipc_precedes_newer_lifecycle);
     passed &= run_test!(test_lifecycle_precedes_newer_ipc_after_failed_wakeup);
     passed &= run_test!(test_other_thread_ipc_does_not_block_lifecycle);

@@ -172,8 +172,8 @@ pub fn kcall_handler() -> ExitStatus {
 ///
 /// # Description
 ///
-/// Delivers a pending caught signal to the running thread at the kernel-call return-to-user
-/// boundary, redirecting it through its user-space handler.
+/// Delivers pending signals to the running thread at the kernel-call return-to-user boundary,
+/// applying default actions or redirecting it through its user-space handler.
 ///
 /// This is the asynchronous-delivery checkpoint of the kernel-call path: it runs at the end of every
 /// kernel call, mirroring [`poll_ikc_messages`]. When a signal frame cannot be built safely, the
@@ -184,8 +184,12 @@ pub fn kcall_handler() -> ExitStatus {
 /// - `result`: The return value the interrupted kernel call would otherwise deliver to user space.
 ///
 pub fn deliver_pending_signals(result: i64) {
-    let outcome: SignalDeliveryOutcome = pm!().try_deliver_signal(result);
-    complete_signal_delivery(outcome);
+    loop {
+        let outcome: SignalDeliveryOutcome = pm!().try_deliver_signal(result);
+        if !complete_signal_delivery(outcome) {
+            break;
+        }
+    }
 }
 
 ///
@@ -194,8 +198,8 @@ pub fn deliver_pending_signals(result: i64) {
 /// Asynchronous signal-delivery checkpoint of the hardware-interrupt and exception return paths.
 ///
 /// The low-level interrupt and exception hooks call this function right before they restore the
-/// interrupted context. When that context resumes in user mode, a pending caught signal is
-/// delivered to the running thread by redirecting the saved context through its user-space handler.
+/// interrupted context. When that context resumes in user mode, pending default actions are applied
+/// or a caught signal redirects the saved context through its user-space handler.
 /// This complements the kernel-call checkpoint ([`deliver_pending_signals`]) for threads that make
 /// no kernel calls: a compute-bound thread is preempted by the timer interrupt and resumes through
 /// this path once rescheduled, so a signal posted while it was descheduled is delivered then. When
@@ -231,33 +235,49 @@ pub unsafe extern "C" fn do_signal_checkpoint(ctx: *mut ContextInformation) {
     // which nothing else accesses until this function returns.
     let ctx: &mut ContextInformation = unsafe { &mut *ctx };
 
-    let outcome: SignalDeliveryOutcome = pm!().try_deliver_signal_on_return(ctx);
-    complete_signal_delivery(outcome);
+    loop {
+        let outcome: SignalDeliveryOutcome = pm!().try_deliver_signal_on_return(ctx);
+        if !complete_signal_delivery(outcome) {
+            break;
+        }
+    }
 }
 
 ///
 /// # Description
 ///
-/// Completes an asynchronous signal delivery attempt, terminating the running process when its
-/// signal frame could not be built safely.
+/// Completes an asynchronous signal delivery attempt outside the process-manager borrow.
 ///
 /// # Parameters
 ///
 /// - `outcome`: Outcome of the delivery attempt.
 ///
-fn complete_signal_delivery(outcome: SignalDeliveryOutcome) {
+/// # Returns
+///
+/// `true` if a stopped process has resumed and delivery must be retried, otherwise `false`.
+///
+fn complete_signal_delivery(outcome: SignalDeliveryOutcome) -> bool {
     match outcome {
-        SignalDeliveryOutcome::None | SignalDeliveryOutcome::Delivered => {},
-        SignalDeliveryOutcome::Escalate => {
-            // The frame could not be built safely (for example, a corrupt user stack). Take the
-            // signal's default action and terminate the process. On success `exit()` switches
-            // context and never returns.
+        SignalDeliveryOutcome::None | SignalDeliveryOutcome::Delivered => false,
+        SignalDeliveryOutcome::Stopped => {
+            // SAFETY: the checkpoint runs in privileged mode with interrupts disabled and holds
+            // no borrow of the process manager.
+            match unsafe { ProcessManager::giveup() } {
+                Ok(()) => true,
+                Err(error) => {
+                    error!("failed to yield after signal stop (error={error:?})");
+                    false
+                },
+            }
+        },
+        SignalDeliveryOutcome::Terminate | SignalDeliveryOutcome::Escalate => {
             // SAFETY: the calling process is not the kernel and no borrow of the process manager is
             // held at this point.
             match unsafe { ProcessManager::exit(ExitStatus::from(ErrorCode::Interrupted)) } {
                 Ok(never) => never,
                 Err(error) => {
-                    error!("failed to terminate after unsafe signal frame (error={error:?})");
+                    error!("failed to terminate after signal delivery (error={error:?})");
+                    false
                 },
             }
         },
