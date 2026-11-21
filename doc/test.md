@@ -65,6 +65,12 @@ Empty lists and unknown host names are errors. Only the Unix signal tests and th
 snapshot-save-exit test are Linux-only; HTTP and terminal tests have no host restrictions.
 
 The POSIX C suites use `test/test-posix.toml` and `test/test-posix-windows.toml`.
+The `posix/test-c-alarm` suite covers one-shot `SIGALRM` delivery, timer replacement and
+cancellation with rounded remaining time, sleep interruption, pending blocked signals, ignored
+signals (including discarding an already pending alarm), fatal default delivery after unblocking
+(including an already pending alarm unmasked by `sigsuspend()`), exclusion of alarms from `fork()`,
+and delivery to an unmasked sleeping thread while its masked sibling remains runnable.
+Kernel signal-state tests also check that the alarm deadline survives `exec()`.
 The `posix/test-c-stdio` suite covers formatted input from files, redirected standard input,
 and pipes: integer, floating-point, string, character, scanset, and `%n` conversions, suppression,
 field widths, unread delimiters, relative seeks, and EOF/error indicators. Scansets support byte ranges

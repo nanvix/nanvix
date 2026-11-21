@@ -11,34 +11,43 @@ use crate::hal::mem::{
 };
 use ::alloc::boxed::Box;
 use ::arch::cpu::excp::Exception;
-use ::sys::pm::{
-    SigAction,
-    SigSet,
-    SIGABRT,
-    SIGBUS,
-    SIGCHLD,
-    SIGCONT,
-    SIGFPE,
-    SIGILL,
-    SIGKILL,
-    SIGQUIT,
-    SIGSEGV,
-    SIGSTOP,
-    SIGSYS,
-    SIGTRAP,
-    SIGTSTP,
-    SIGTTIN,
-    SIGTTOU,
-    SIGURG,
-    SIGWINCH,
-    SIGXCPU,
-    SIGXFSZ,
-    SIG_BLOCK,
-    SIG_DFL,
-    SIG_IGN,
-    SIG_MAX,
-    SIG_SETMASK,
-    SIG_UNBLOCK,
+use ::core::time::Duration;
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    pm::{
+        SigAction,
+        SigSet,
+        SIGABRT,
+        SIGALRM,
+        SIGBUS,
+        SIGCHLD,
+        SIGCONT,
+        SIGFPE,
+        SIGILL,
+        SIGKILL,
+        SIGQUIT,
+        SIGSEGV,
+        SIGSTOP,
+        SIGSYS,
+        SIGTRAP,
+        SIGTSTP,
+        SIGTTIN,
+        SIGTTOU,
+        SIGURG,
+        SIGWINCH,
+        SIGXCPU,
+        SIGXFSZ,
+        SIG_BLOCK,
+        SIG_DFL,
+        SIG_IGN,
+        SIG_MAX,
+        SIG_SETMASK,
+        SIG_UNBLOCK,
+    },
+    time::SystemTime,
 };
 
 //==================================================================================================
@@ -115,6 +124,8 @@ pub struct SignalControl {
     /// Registered by the `SigRestorer` kernel call and read when an asynchronous signal frame is
     /// built, to set the handler's return address.
     restorer: Option<VirtualAddress>,
+    /// One-shot SIGALRM deadline, independent of thread sleep deadlines.
+    alarm: Option<SystemTime>,
 }
 
 //==================================================================================================
@@ -352,6 +363,7 @@ impl SignalControl {
     /// # Description
     ///
     /// Installs `disposition` for signal `signum`, returning the disposition it replaced.
+    /// Installing [`SignalDisposition::Ignore`] discards its process-directed pending instance.
     ///
     /// # Parameters
     ///
@@ -371,7 +383,11 @@ impl SignalControl {
         let idx: usize = signum.wrapping_sub(1);
         let slot: &mut SignalDisposition =
             self.dispositions.get_mut(idx / 32)?.get_mut(idx % 32)?;
-        Some(::core::mem::replace(slot, disposition))
+        let previous: SignalDisposition = ::core::mem::replace(slot, disposition);
+        if matches!(slot, SignalDisposition::Ignore) {
+            self.pending &= !(1u64 << idx);
+        }
+        Some(previous)
     }
 
     ///
@@ -461,12 +477,82 @@ impl SignalControl {
     ///
     /// # Description
     ///
+    /// Replaces the process alarm, preserving any signal already due for delivery.
+    ///
+    /// # Parameters
+    ///
+    /// - `seconds`: Delay in seconds, or zero to cancel.
+    /// - `now`: Current monotonic time.
+    ///
+    /// # Returns
+    ///
+    /// Remaining whole seconds on the previous alarm, rounded up, or an error if time overflows.
+    ///
+    pub fn set_alarm(&mut self, seconds: u32, now: SystemTime) -> Result<u32, Error> {
+        let deadline: Option<SystemTime> = if seconds == 0 {
+            None
+        } else {
+            Some(
+                now.checked_add_duration(&Duration::from_secs(u64::from(seconds)))
+                    .ok_or_else(|| {
+                        error!("set_alarm(): deadline overflow (seconds={seconds}, now={now:?})");
+                        Error::new(ErrorCode::ValueOutOfRange, "alarm deadline overflow")
+                    })?,
+            )
+        };
+        self.expire_alarm(now);
+        let remaining: u32 = match self.alarm {
+            Some(previous) => match previous.checked_sub(&now) {
+                Ok(remaining) => {
+                    let seconds: u64 =
+                        remaining.as_secs() + u64::from(remaining.subsec_nanos() != 0);
+                    u32::try_from(seconds).map_err(|_| {
+                        error!("set_alarm(): remaining time overflow (seconds={seconds})");
+                        Error::new(ErrorCode::ValueOutOfRange, "alarm remaining time overflow")
+                    })?
+                },
+                Err(_) => 0,
+            },
+            None => 0,
+        };
+        self.alarm = deadline;
+        Ok(remaining)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Disarms an expired alarm and posts SIGALRM unless its disposition is ignore.
+    ///
+    /// # Parameters
+    ///
+    /// - `now`: Current monotonic time.
+    ///
+    /// # Returns
+    ///
+    /// Whether a signal was posted. Blocked signals remain pending until unmasked.
+    ///
+    pub fn expire_alarm(&mut self, now: SystemTime) -> bool {
+        if !self.alarm.is_some_and(|deadline| now >= deadline) {
+            return false;
+        }
+        self.alarm = None;
+        if matches!(self.disposition(SIGALRM), Some(SignalDisposition::Ignore)) {
+            return false;
+        }
+        self.post(SIGALRM);
+        true
+    }
+
+    ///
+    /// # Description
+    ///
     /// Produces the signal control block a forked child inherits from this (the parent's) one.
     ///
     /// The signal dispositions are copied verbatim, as POSIX requires, and the restorer is inherited
     /// because the child shares the parent's address space (the trampoline lives at the same
     /// address). The pending set is *not* inherited: a freshly forked child starts with no pending
-    /// signals.
+    /// signals or an alarm.
     ///
     /// # Returns
     ///
@@ -478,6 +564,7 @@ impl SignalControl {
             dispositions: self.dispositions.clone(),
             pending: 0,
             restorer: self.restorer,
+            alarm: None,
         }
     }
 
@@ -493,6 +580,7 @@ impl SignalControl {
     /// example, `SIGCHLD`) is discarded, whether or not it is blocked, as POSIX requires whenever a
     /// signal action is set to [`SIG_DFL`]. The restorer lives in the outgoing image, so it is
     /// dropped — the freshly loaded image re-registers its own restorer at startup.
+    /// The process alarm deadline survives the image replacement.
     ///
     /// # Returns
     ///
@@ -526,6 +614,7 @@ impl Default for SignalControl {
             ],
             pending: 0,
             restorer: None,
+            alarm: None,
         }
     }
 }

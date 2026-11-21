@@ -13,6 +13,7 @@
 # One entry per line (with `\` continuations) so that adding a suite touches a
 # single line, minimizing merge conflicts between branches that each add a suite.
 ALL_POSIX_TESTS := \
+	test-c-alarm \
 	test-c-bindings \
 	test-c-cxa-atexit \
 	test-c-ctor \

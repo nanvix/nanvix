@@ -16,22 +16,27 @@ use ::syslog::trace_libcall;
 /// # Description
 ///
 /// Arranges for a `SIGALRM` signal to be delivered to the calling process after `seconds` seconds.
-/// Nanvix does not yet support signal delivery, so no alarm is ever scheduled and this call has no
-/// effect.
+/// Replaces any previous alarm. A zero delay cancels the timer without clearing an already pending
+/// signal. Alarms are not inherited by `fork()` and survive `exec()`.
 ///
 /// # Parameters
 ///
-/// - `seconds`: The requested delay, in seconds. Ignored on Nanvix.
+/// - `seconds`: The requested delay, in seconds, or zero to cancel.
 ///
 /// # Returns
 ///
-/// Returns the number of seconds remaining on any previously scheduled alarm. As Nanvix never
-/// schedules an alarm, this is always `0`.
+/// Returns the remaining time on the previous alarm, rounded up to whole seconds, or zero if none
+/// was scheduled. An unexpected kernel error is logged and returns `c_uint::MAX`; POSIX reserves no
+/// error value for this function and `errno` is left unchanged.
 ///
 #[trace_libcall]
 #[unsafe(no_mangle)]
 pub extern "C" fn alarm(seconds: c_uint) -> c_uint {
-    // TODO: https://github.com/nanvix/nanvix/issues/453
-    ::syslog::debug!("alarm(seconds={}): not implemented", seconds);
-    0
+    match ::sys::kcall::pm::__kcall_alarm(seconds) {
+        Ok(remaining) => remaining,
+        Err(error) => {
+            ::syslog::warn!("alarm(): failed (seconds={seconds}, error={error:?})");
+            c_uint::MAX
+        },
+    }
 }

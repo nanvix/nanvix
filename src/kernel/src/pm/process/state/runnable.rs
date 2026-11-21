@@ -373,12 +373,27 @@ impl RunnableProcess {
     /// has other ready threads. Without it, a sleeping thread parked inside a runnable process
     /// would never have its alarm serviced until the whole process quiesced, allowing a CPU-bound
     /// sibling thread to starve another thread's timed wait.
+    /// Also services the process's SIGALRM timer, waking an eligible sleeper when no ready or
+    /// interrupted thread can accept the signal.
     ///
     /// # Parameters
     ///
     /// - `now`: The current system time.
     ///
     pub fn wakeup_expired_alarms(&mut self, now: SystemTime) {
+        let alarm_bit: u64 = 1u64 << (::sys::pm::SIGALRM - 1);
+        self.state.signals_mut().expire_alarm(now);
+        let mut wake_for_signal: bool = self.state.signals().pending() & alarm_bit != 0
+            && !self
+                .ready_threads
+                .iter()
+                .any(|thread| thread.thread_state().blocked() & alarm_bit == 0)
+            && !self.interrupted_threads.as_ref().is_some_and(|threads| {
+                threads
+                    .iter()
+                    .any(|thread| thread.thread_state().blocked() & alarm_bit == 0)
+            });
+
         // Take the sleeping-thread list, returning early when there is nothing to service.
         let mut sleeping_threads: VecDeque<SleepingThread> = match self.sleeping_threads.take() {
             Some(sleeping_threads) => VecDeque::from(sleeping_threads),
@@ -395,6 +410,12 @@ impl RunnableProcess {
             let Some(thread) = sleeping_threads.pop_front() else {
                 break;
             };
+            if wake_for_signal && thread.thread_state().blocked() & alarm_bit == 0 {
+                wake_for_signal = false;
+                self.ready_threads
+                    .push_back(thread.interrupt(InterruptReason::Signaled).resume());
+                continue;
+            }
             match thread.alarm() {
                 Some(alarm) if now >= alarm => {
                     // Wake the thread carrying the TimedOut reason so the blocking kernel call
