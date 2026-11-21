@@ -74,6 +74,11 @@ Kernel signal-state tests also check that the alarm deadline survives `exec()`.
 The `test-rust-kernel` signal-checkpoint tests verify caught-signal delivery alongside successful
 kernel calls, nested handlers, pending and ignored signals, unsigned kernel-call results, and
 independent per-thread epochs without requiring user-space TLS.
+The `posix/test-c-signal-progress` suite uses `alarm()` with a handler without `SA_RESTART` to
+bound empty-pipe reads and full-pipe writes. It checks `EINTR` without progress, exact partial counts
+after one page is transferred, byte integrity, and cancellation of the remaining operation.
+The existing `posix/test-c-signal-rpc` suite additionally checks nested handler RPCs and mailbox
+correlation.
 The `posix/test-c-stdio` suite covers formatted input from files, redirected standard input,
 and pipes: integer, floating-point, string, character, scanset, and `%n` conversions, suppression,
 field widths, unread delimiters, relative seeks, and EOF/error indicators. Scansets support byte ranges
