@@ -1373,10 +1373,11 @@ impl ProcessManager {
     /// transparently restarting when the handler requests `SA_RESTART`) and the handler is delivered
     /// at its return-to-user checkpoint.
     ///
-    /// Prefer an eligible running, ready, or already-interrupted thread, which will reach its own
-    /// return-to-user checkpoint. Otherwise interrupt an eligible sleeper, even if its process has
-    /// runnable siblings that mask the signal. Thread-directed pending signals only qualify their
-    /// target thread; a masked signal remains pending without interrupting a blocking call.
+    /// Prefer an eligible running or ready thread, or the first interrupted thread of an interrupted
+    /// process, which will reach its own return-to-user checkpoint. Other interrupted threads are
+    /// retained but not schedulable. Otherwise interrupt an eligible sleeper, even if its process
+    /// has runnable siblings that mask the signal. Thread-directed pending signals only qualify
+    /// their target thread; a masked signal remains pending without interrupting a blocking call.
     ///
     /// # Parameters
     ///
@@ -1392,14 +1393,20 @@ impl ProcessManager {
         let process_pending: bool = (process.state_mut().signals().pending() & bit) != 0;
         let mut candidate: Option<ThreadIdentifier> = None;
         let mut will_deliver: bool = false;
+        let mut next_interrupted: bool = matches!(&process, ProcessRefMut::Interrupted(_));
         process.for_each_live_thread_mut(|mut thread| {
+            let schedulable: bool = match &thread {
+                ThreadRefMut::Running(_) | ThreadRefMut::Ready(_) => true,
+                ThreadRefMut::Interrupted(_) => ::core::mem::take(&mut next_interrupted),
+                _ => false,
+            };
             let state = thread.thread_state_mut();
             if (state.blocked() & bit) != 0 || (!process_pending && (state.pending() & bit) == 0) {
                 return;
             }
             if let ThreadRefMut::Sleeping(thread) = thread {
                 candidate.get_or_insert(thread.id());
-            } else {
+            } else if schedulable {
                 will_deliver = true;
             }
         });

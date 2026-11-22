@@ -38,6 +38,7 @@ use crate::{
                     SignalDisposition,
                     SignalHandler,
                 },
+                InterruptedProcess,
                 PendingProcessTermination,
                 RunnableProcess,
                 RunningProcess,
@@ -94,6 +95,7 @@ use ::sys::{
         SIG_BLOCK,
         SIG_UNBLOCK,
     },
+    time::SystemTime,
     ExitStatus,
 };
 
@@ -1739,6 +1741,75 @@ fn test_caught_signal_respects_pending_thread_target() -> bool {
     true
 }
 
+/// An interrupted thread retained behind masked ready threads must not suppress a sleeper wakeup.
+fn test_retained_interruption_does_not_hide_signal_recipient() -> bool {
+    for location in [
+        SleeperLocation::Ready,
+        SleeperLocation::Running,
+        SleeperLocation::Interrupted,
+    ] {
+        let Some((mut manager, pid, tid)) =
+            sleeping_sibling_manager(SleeperLocation::Ready, 0, signal_bit(SIGUSR1))
+        else {
+            return false;
+        };
+        let Some(process) = manager.ready.pop_front() else {
+            error!("missing runnable signal fixture");
+            return false;
+        };
+        let mut running: RunningProcess = process.run().0;
+        running.add_thread(signal_thread(ThreadIdentifier::from(1001), 0, 0));
+        let now: SystemTime = crate::pm::clock::now();
+        let process: RunnableProcess = match running.sleep(Some(now)) {
+            Ok((process, _)) => process,
+            Err(_) => {
+                error!("signal fixture lost its third thread");
+                return false;
+            },
+        };
+        let sleeping: SleepingProcess = match process.run().0.sleep(Some(now)) {
+            Err((process, _)) => process,
+            Ok(_) => {
+                error!("signal fixture did not fully suspend");
+                return false;
+            },
+        };
+        let interrupted: InterruptedProcess = match sleeping.wakeup_alarm(now) {
+            Ok(process) => process,
+            Err(_) => {
+                error!("signal fixture did not interrupt timed-out siblings");
+                return false;
+            },
+        };
+        match location {
+            SleeperLocation::Ready => manager.ready.push_back(interrupted.resume()),
+            SleeperLocation::Running => manager.running = Some(interrupted.resume().run().0),
+            SleeperLocation::Interrupted => manager.interrupted.push_back(interrupted),
+            SleeperLocation::Suspended => unreachable!("fixture must retain interrupted siblings"),
+        }
+        if let Err(error) = manager.kill(pid, pid, SIGUSR1) {
+            error!("failed to signal fixture with retained interruption (error={error:?})");
+            return false;
+        }
+        if manager.is_thread_sleeping(tid) {
+            error!(
+                "unschedulable interrupted sibling hid signal recipient (location={location:?})"
+            );
+            return false;
+        }
+        if !check_sleeper_resumption(
+            &mut manager,
+            pid,
+            tid,
+            Some(InterruptReason::Signaled),
+            !matches!(location, SleeperLocation::Running),
+        ) {
+            return false;
+        }
+    }
+    true
+}
+
 /// Rendezvous cleanup must use the same complete lookup and retain its timeout reason.
 fn test_rendezvous_interrupts_sleeping_sibling() -> bool {
     let Some((mut manager, pid, tid)) =
@@ -2619,6 +2690,7 @@ pub(in crate::pm::process) fn test() -> bool {
     passed &= run_test!(test_exec_replacement_produces_thread_termination_only);
     passed &= run_test!(test_exec_replacement_inherits_signal_mask);
     passed &= run_test!(test_exec_replacement_preserves_pending_signals);
+    passed &= run_test!(test_retained_interruption_does_not_hide_signal_recipient);
     passed &= run_test!(test_caught_signal_finds_sleeping_recipient);
     passed &= run_test!(test_wakeup_searches_all_process_states);
     passed &= run_test!(test_caught_signal_preserves_ineligible_sleepers);
