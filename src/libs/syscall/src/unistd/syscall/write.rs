@@ -71,23 +71,26 @@ struct WriteBackend {
 /// - `tid`: Thread identifier of the calling thread.
 /// - `fd`: File descriptor.
 /// - `chunk`: Byte slice to write.
+/// - `backend`: Destination and cancellation policy.
+/// - `initial_epoch`: Signal epoch retained across requests in this operation.
 ///
 /// # Returns
 ///
-/// Upon successful completion, the number of bytes written is returned. Otherwise, an
-/// error is returned.
+/// Returns the number of bytes written and whether a signal interrupted the operation. An
+/// interruption with no progress returns an error instead.
 ///
 fn write_chunk(
     tid: ThreadIdentifier,
     fd: RawFileDescriptor,
     chunk: &[u8],
     backend: WriteBackend,
-) -> Result<c_size_t, Error> {
+    initial_epoch: &mut Option<u32>,
+) -> Result<(c_size_t, bool), Error> {
     let signal_mask: Option<crate::rpc::SignalMaskGuard> =
         if backend.push_pid == ProcessIdentifier::KERNEL {
             None
         } else {
-            Some(crate::rpc::SignalMaskGuard::block_all()?)
+            Some(crate::rpc::SignalMaskGuard::block_all_since(initial_epoch)?)
         };
 
     // Build metadata-only request and send it via IPC message.
@@ -123,27 +126,45 @@ fn write_chunk(
     match push_result {
         Ok(()) => {},
         Err(error) if error.code == ErrorCode::Interrupted && backend.cancel_pipe_on_interrupt => {
-            let _transferred: Option<u32> =
-                cancel_pipe_operation(tid, fd, PipeOperation::Write, token.identifier())?;
+            if let Some(transferred) =
+                cancel_pipe_operation(tid, fd, PipeOperation::Write, token.identifier())?
+            {
+                return cancelled_write_result(transferred, chunk.len(), error);
+            }
             return Err(error);
         },
         Err(error) => return Err(error),
     }
 
-    // Receive response.
-    let response: Message = match crate::rpc::recv_response_interruptible(&token) {
+    let receive_result: Result<Message, Error> = if backend.cancel_pipe_on_interrupt {
+        crate::rpc::recv_response_interruptible_since(&token, initial_epoch)
+    } else {
+        crate::rpc::recv_response_interruptible(&token)
+    };
+    let mut interrupted: Option<Error> = None;
+    let response: Message = match receive_result {
         Ok(response) => response,
-        Err(error) if error.code == ErrorCode::Interrupted && backend.cancel_pipe_on_interrupt => {
-            match cancel_pipe_operation(tid, fd, PipeOperation::Write, token.identifier())? {
-                Some(_transferred) => return Err(error),
-                None => crate::rpc::recv_response(&token)?,
+        Err(error) if error.code == ErrorCode::Interrupted => {
+            if backend.cancel_pipe_on_interrupt {
+                if let Some(transferred) =
+                    cancel_pipe_operation(tid, fd, PipeOperation::Write, token.identifier())?
+                {
+                    return cancelled_write_result(transferred, chunk.len(), error);
+                }
             }
+            interrupted = Some(error);
+            // The bulk push completed and no pipe write remains parked. Drain its response,
+            // retaining the interruption so the outer loop does not start another request.
+            crate::rpc::recv_response(&token)?
         },
         Err(error) => return Err(error),
     };
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
+        if let Some(error) = interrupted {
+            return Err(error);
+        }
         ::syslog::warn!(
             "write_chunk(): failed (fd={:?}, chunk.len={:?}, error_code={:?})",
             fd,
@@ -193,7 +214,12 @@ fn write_chunk(
                 ));
             }
 
-            Ok(response.count as c_size_t)
+            if count == 0 {
+                if let Some(error) = interrupted {
+                    return Err(error);
+                }
+            }
+            Ok((count as c_size_t, interrupted.is_some()))
         },
         header => {
             ::syslog::warn!(
@@ -204,6 +230,29 @@ fn write_chunk(
             );
             Err(Error::new(ErrorCode::InvalidMessage, "failed to parse response"))
         },
+    }
+}
+
+/// Reports the bytes accepted before cancellation, rejecting invalid acknowledgement counts.
+fn cancelled_write_result(
+    transferred: u32,
+    requested: usize,
+    interruption: Error,
+) -> Result<(c_size_t, bool), Error> {
+    if transferred as usize > requested {
+        ::syslog::warn!(
+            "cancelled_write_result(): oversized count (transferred={transferred}, \
+             requested={requested})"
+        );
+        return Err(Error::new(
+            ErrorCode::InvalidMessage,
+            "cancelled write count exceeds requested chunk length",
+        ));
+    }
+    if transferred == 0 {
+        Err(interruption)
+    } else {
+        Ok((transferred as c_size_t, true))
     }
 }
 
@@ -220,7 +269,8 @@ fn write_chunk(
 /// # Returns
 ///
 /// Upon successful completion, the `write()` system call returns the number of bytes written.
-/// Otherwise, it returns an error.
+/// A caught signal ends the write with the count already accepted, or `Interrupted` if no bytes
+/// were accepted. Otherwise, it returns an error.
 ///
 pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
     // Skip logging for stdout and stderr to avoid spamming the output.
@@ -327,25 +377,27 @@ fn write_ipc(
 
     let mut total_written: c_size_t = 0;
     let mut offset: usize = 0;
+    let mut initial_epoch: Option<u32> = None;
 
     while offset < buffer.len() {
         let chunk_size: usize =
             sg_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &[u8] = &buffer[offset..offset + chunk_size];
 
-        let written: c_size_t =
-            super::util::retry_while_in_progress(|| write_chunk(tid, fd, chunk, backend))?;
+        let (written, interrupted): (c_size_t, bool) =
+            match super::util::retry_while_in_progress(|| {
+                write_chunk(tid, fd, chunk, backend, &mut initial_epoch)
+            }) {
+                Ok(result) => result,
+                Err(error) if error.code == ErrorCode::Interrupted && total_written > 0 => break,
+                Err(error) => return Err(error),
+            };
         total_written += written;
         offset += written as usize;
 
-        // Stop only when the backend makes no forward progress. A backend may accept fewer bytes
-        // than requested per request — notably hostfs caps each IKC write at
-        // `MAX_INLINE_WRITE_DATA`, which shrank when the IPC payload gave up 8 bytes to the
-        // kernel-stamped client identity (nanvix/nanvix#2662) — so a short write is not
-        // end-of-stream: the next iteration writes the remainder and the caller still observes a
-        // full write. Breaking on `written == 0` keeps the guard against an unbounded loop when no
-        // forward progress is possible.
-        if written == 0 {
+        // Without a signal, short backend replies still need another request: hostfs caps writes
+        // at MAX_INLINE_WRITE_DATA. Stop on interruption or lack of forward progress instead.
+        if interrupted || written == 0 {
             break;
         }
     }

@@ -28,6 +28,7 @@ use ::sys::{
 /// Keeps signals blocked until a tagged bulk rendezvous is registered in the kernel.
 pub(crate) struct SignalMaskGuard {
     previous: SigSet,
+    epoch: u32,
 }
 
 impl SignalMaskGuard {
@@ -35,10 +36,21 @@ impl SignalMaskGuard {
     pub(crate) fn block_all() -> Result<Self, Error> {
         let blocked: SigSet = !0;
         let mut previous: SigSet = 0;
-        unsafe {
-            ::sys::kcall::pm::__kcall_sigprocmask(SIG_SETMASK, &blocked, &mut previous)?;
+        let epoch: u32 =
+            ::sys::kcall::pm::__kcall_sigcheckpoint(Some(&blocked), Some(&mut previous))?;
+        Ok(Self { previous, epoch })
+    }
+
+    /// Blocks signals and rejects another blocking step after a caught handler in this operation.
+    pub(crate) fn block_all_since(initial_epoch: &mut Option<u32>) -> Result<Self, Error> {
+        let guard: Self = Self::block_all()?;
+        if initial_epoch.is_some_and(|initial| initial != guard.epoch) {
+            let reason: &str = "caught signal during I/O";
+            ::syslog::debug!("block_all_since(): {reason}");
+            return Err(Error::new(ErrorCode::Interrupted, reason));
         }
-        Ok(Self { previous })
+        *initial_epoch = Some(guard.epoch);
+        Ok(guard)
     }
 
     /// Returns the signal mask that the kernel should restore after registration.
@@ -49,12 +61,16 @@ impl SignalMaskGuard {
 
 impl Drop for SignalMaskGuard {
     fn drop(&mut self) {
-        unsafe {
-            let _result: Result<(), Error> = ::sys::kcall::pm::__kcall_sigprocmask(
+        // SAFETY: the saved mask remains valid for the duration of the kernel call.
+        let result: Result<(), Error> = unsafe {
+            ::sys::kcall::pm::__kcall_sigprocmask(
                 SIG_SETMASK,
                 &self.previous,
                 core::ptr::null_mut(),
-            );
+            )
+        };
+        if let Err(error) = result {
+            ::syslog::error!("SignalMaskGuard::drop(): failed to restore mask (error={error:?})");
         }
     }
 }
@@ -121,8 +137,27 @@ pub(crate) fn recv_response(token: &RequestToken) -> Result<Message, Error> {
 
 /// Attempts to receive the next matching response, preserving `EINTR` for explicit arbitration.
 pub(crate) fn recv_response_interruptible(token: &RequestToken) -> Result<Message, Error> {
+    recv_response_with(token, ::sys::kcall::ipc::__kcall_recv)
+}
+
+/// Checks the operation's epoch before each receive and atomically restores signals while waiting.
+pub(crate) fn recv_response_interruptible_since(
+    token: &RequestToken,
+    initial_epoch: &mut Option<u32>,
+) -> Result<Message, Error> {
+    recv_response_with(token, || {
+        let signal_mask: SignalMaskGuard = SignalMaskGuard::block_all_since(initial_epoch)?;
+        ::sys::kcall::ipc::__kcall_recv_restoring_signals(signal_mask.previous())
+    })
+}
+
+/// Receives correlated responses with the selected waiting policy.
+fn recv_response_with(
+    token: &RequestToken,
+    receive: impl FnMut() -> Result<Message, Error>,
+) -> Result<Message, Error> {
     token.receive_response_with(
-        ::sys::kcall::ipc::__kcall_recv,
+        receive,
         |identifier| {
             ::syslog::warn!(
                 "recv_response(): dropping stale response (expected_request_id={}, request_id={})",

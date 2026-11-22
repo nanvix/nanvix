@@ -80,6 +80,17 @@ receiver sleeping again after its masked sibling consumes the message.
 The `test-rust-kill` suite verifies that a signal queued while caught and blocked, then changed
 to a terminate/core default, prevents that receive from sleeping. A parent-side alarm bounds
 both child-termination regressions.
+The `posix/test-c-signal-progress` suite uses `alarm()` with a handler without `SA_RESTART` to
+bound empty-pipe reads and full-pipe writes. It checks `EINTR` without progress, exact partial counts
+after one page is transferred, byte integrity, and cancellation of the remaining operation.
+Cleanup probes remain under a fatal watchdog. Additional synchronized read/write cases use
+`SA_RESTART` to suppress `EINTR`: another thread signals after one page of progress and releases
+one more page, verifying that a caught handler ends the compound operation even when kernel
+calls succeed.
+A non-restarting variant leaves the pipe full after the handler, checking that the completion
+wait cancels a parked write without a reader freeing space.
+The existing `posix/test-c-signal-rpc` suite additionally checks nested handler RPCs and mailbox
+correlation.
 The `posix/test-c-stdio` suite covers formatted input from files, redirected standard input,
 and pipes: integer, floating-point, string, character, scanset, and `%n` conversions, suppression,
 field widths, unread delimiters, relative seeks, and EOF/error indicators. Scansets support byte ranges

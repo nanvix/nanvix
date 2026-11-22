@@ -64,6 +64,7 @@ ALL_POSIX_TESTS := \
 	test-c-regex \
 	test-c-send \
 	test-c-setjmp \
+	test-c-signal-progress \
 	test-c-signal-rpc \
 	test-c-sigmask \
 	test-c-stdio \
