@@ -540,6 +540,11 @@ impl RunningProcess {
         self.running.id()
     }
 
+    /// Returns the running thread's caught-signal delivery epoch, modulo 2^32.
+    pub fn get_signal_epoch(&self) -> u32 {
+        self.running.thread_state().signal_epoch()
+    }
+
     ///
     /// # Description
     ///

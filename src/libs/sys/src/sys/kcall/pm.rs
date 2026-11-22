@@ -331,6 +331,51 @@ pub fn __kcall_kill(pid: ProcessIdentifier, signum: i32) -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Signal Checkpoint
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Optionally replaces the calling thread's signal mask and snapshots its caught-signal epoch.
+///
+/// The kernel advances the per-thread epoch before entering each caught signal handler, including
+/// delivery alongside successful kernel calls and nested handlers. Pending or ignored signals do
+/// not advance it. The snapshot and mask replacement are atomic with respect to signal delivery.
+/// Callers can block signals and compare snapshots before starting another part of a compound
+/// operation, without relying on EINTR. Epochs wrap modulo 2^32; compare snapshots spanning fewer
+/// than 2^32 deliveries. Newly created threads start with an independent epoch.
+///
+/// # Parameters
+///
+/// - `set`: Replacement mask, or `None` to leave it unchanged.
+/// - `oldset`: Destination for the previous mask, if needed.
+///
+/// # Returns
+///
+/// The epoch before return-to-user signal delivery, or an error. Unblocking signals may run a
+/// handler before this function returns; a subsequent checkpoint observes that delivery.
+///
+pub fn __kcall_sigcheckpoint(
+    set: Option<&SigSet>,
+    oldset: Option<&mut SigSet>,
+) -> Result<u32, Error> {
+    let set_ptr: *const SigSet = set.map_or(::core::ptr::null(), |set| set as *const SigSet);
+    let oldset_ptr: *mut SigSet =
+        oldset.map_or(::core::ptr::null_mut(), |oldset| oldset as *mut SigSet);
+    let result: i64 = kcall2!(
+        KcallNumber::Sigcheckpoint.into(),
+        set_ptr as usize as u32,
+        oldset_ptr as usize as u32
+    );
+    if result < 0 {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to checkpoint signals"))
+    } else {
+        Ok(result as u32)
+    }
+}
+
+//==================================================================================================
 // Sigaction
 //==================================================================================================
 

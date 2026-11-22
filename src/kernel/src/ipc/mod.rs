@@ -23,7 +23,10 @@ mod sg;
 pub use mbx::Mailbox;
 pub use pull::pull;
 pub use push::push;
-pub use recv::recv;
 #[cfg(feature = "test")]
 pub(crate) use recv::recv_with;
+pub use recv::{
+    recv,
+    recv_restoring_signals,
+};
 pub use send::send;

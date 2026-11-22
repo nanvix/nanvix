@@ -1724,7 +1724,7 @@ fn test_rendezvous_mask_reconciles_pending_defaults() -> bool {
             error!("failed to queue rendezvous default (error={error:?})");
             return false;
         }
-        let interrupted: bool = match manager.restore_rendezvous_signal_mask(pid, tid, 0) {
+        let interrupted: bool = match manager.restore_wait_signal_mask(pid, tid, 0) {
             Ok(interrupted) => interrupted,
             Err(error) => {
                 error!("failed to restore rendezvous mask (error={error:?})");

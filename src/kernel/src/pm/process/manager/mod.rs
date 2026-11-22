@@ -1047,9 +1047,9 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Restores a rendezvous caller's blocked-signal mask after its pending push or pull is
-    /// registered, and reports whether a caught or fatal pending signal became deliverable.
-    /// Pending default stops are applied without interrupting the rendezvous.
+    /// Restores a caller's blocked-signal mask before waiting, and reports whether a caught or fatal
+    /// pending signal became deliverable. Rendezvous callers must register their transfer first.
+    /// Pending default stops are applied without interrupting the wait.
     ///
     /// # Parameters
     ///
@@ -1066,7 +1066,7 @@ impl ProcessManager {
     ///
     /// This function returns an error if the process or thread does not exist.
     ///
-    pub fn restore_rendezvous_signal_mask(
+    pub fn restore_wait_signal_mask(
         &mut self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
@@ -3690,6 +3690,11 @@ impl ProcessManager {
     ///
     pub fn get_tid(&self) -> ThreadIdentifier {
         self.get_running().get_tid()
+    }
+
+    /// Returns the running thread's caught-signal delivery epoch, modulo 2^32.
+    pub fn get_signal_epoch(&self) -> u32 {
+        self.get_running().get_signal_epoch()
     }
 
     pub fn has_capability(

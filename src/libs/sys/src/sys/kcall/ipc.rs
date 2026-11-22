@@ -19,6 +19,7 @@ use crate::{
         Timeout,
     },
     kcall1,
+    kcall3,
     number::KcallNumber,
     pm::{
         ProcessIdentifier,
@@ -58,6 +59,36 @@ pub fn __kcall_recv() -> Result<Message, Error> {
         Ok(message)
     } else {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to recv()"))
+    }
+}
+
+///
+/// # Description
+///
+/// Receives a message while atomically restoring the calling thread's signal mask. Callers can
+/// block signals and check a delivery epoch before this call without losing a pending signal
+/// between mask restoration and the receive wait. Ordinary kernel-call restart semantics apply.
+///
+/// # Parameters
+///
+/// - `mask`: Signal mask to restore before receiving.
+///
+/// # Returns
+///
+/// The received message, or an error (including interruption by a newly unblocked signal).
+///
+pub fn __kcall_recv_restoring_signals(mask: SigSet) -> Result<Message, Error> {
+    let mut message: Message = Message::default();
+    let result: i64 = kcall3!(
+        KcallNumber::RecvRestoringSignals.into(),
+        &mut message as *mut Message as usize as u32,
+        mask as u32,
+        (mask >> 32) as u32
+    );
+    if result == 0 {
+        Ok(message)
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to receive with signal restoration"))
     }
 }
 

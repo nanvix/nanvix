@@ -57,7 +57,10 @@ pub use sig_restorer::sig_restorer;
 pub use sigaction::sigaction;
 pub use signal_cond::signal_cond;
 pub use sigpending::sigpending;
-pub use sigprocmask::sigprocmask;
+pub use sigprocmask::{
+    sigcheckpoint,
+    sigprocmask,
+};
 pub use sigreturn::sigreturn;
 pub use sigsuspend::sigsuspend;
 pub use sleep::sleep;

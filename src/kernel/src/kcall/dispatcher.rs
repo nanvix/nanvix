@@ -142,6 +142,18 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
         },
         // SAFETY: The calling thread is not the kernel and no resources are held.
+        KcallNumber::RecvRestoringSignals => match unsafe {
+            ipc::recv_restoring_signals(
+                tid,
+                pid,
+                arg0 as usize,
+                u64::from(arg1) | (u64::from(arg2) << 32),
+            )
+        } {
+            Ok(()) => KcallResult::ok(),
+            Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
+        },
+        // SAFETY: The calling thread is not the kernel and no resources are held.
         KcallNumber::Push => match ipc::push(pid, tid, arg0) {
             Ok(()) => KcallResult::ok(),
             Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
@@ -224,6 +236,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         KcallNumber::Sigsuspend => pm::sigsuspend(pid, tid, arg0),
         KcallNumber::SigRestorer => pm::sig_restorer(pid, arg0),
         KcallNumber::Alarm => pm::alarm(pid, arg0),
+        KcallNumber::Sigcheckpoint => pm::sigcheckpoint(pid, tid, arg0, arg1),
 
         // Unknown kernel call.
         _ => {
