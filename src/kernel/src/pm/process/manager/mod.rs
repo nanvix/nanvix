@@ -199,6 +199,14 @@ enum PostAction {
     Stop,
 }
 
+/// Location of a process containing a sleeping thread, valid until the process lists change.
+enum SleepingThreadLocation {
+    Running,
+    Ready(usize),
+    Suspended(usize),
+    Interrupted(usize),
+}
+
 //==================================================================================================
 // Process Manager
 //==================================================================================================
@@ -1365,12 +1373,10 @@ impl ProcessManager {
     /// transparently restarting when the handler requests `SA_RESTART`) and the handler is delivered
     /// at its return-to-user checkpoint.
     ///
-    /// Only a fully-suspended process needs explicit help; a process that still has a ready or
-    /// running thread reaches its own checkpoint without being woken, because every return to user
-    /// mode is a checkpoint — including the return from the timer interrupt through which a
-    /// preempted thread resumes, so even a thread that makes no kernel calls observes the signal
-    /// once it is rescheduled. A signal that the candidate thread would block is left pending and
-    /// interrupts nothing.
+    /// Prefer an eligible running, ready, or already-interrupted thread, which will reach its own
+    /// return-to-user checkpoint. Otherwise interrupt an eligible sleeper, even if its process has
+    /// runnable siblings that mask the signal. Thread-directed pending signals only qualify their
+    /// target thread; a masked signal remains pending without interrupting a blocking call.
     ///
     /// # Parameters
     ///
@@ -1378,48 +1384,30 @@ impl ProcessManager {
     /// - `signum`: Signal number that was posted.
     ///
     fn interrupt_signal_candidate(&mut self, pid: ProcessIdentifier, signum: usize) {
-        let candidate: Option<ThreadIdentifier> = self
-            .suspended
-            .iter()
-            .find(|process| process.state().pid() == pid)
-            .and_then(|process| process.candidate_tid_for(signum));
-        if let Some(tid) = candidate {
-            self.interrupt_suspended_thread(tid);
-        }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Moves the suspended process that owns thread `tid` to the interrupted list, recording the
-    /// interruption as [`InterruptReason::Signaled`] on that thread so it is resumed at the next
-    /// scheduling opportunity and its blocking call observes the interruption.
-    ///
-    /// Best-effort: if the thread is no longer suspended (for example, it was already woken by
-    /// another notifier), the process lists are left unchanged.
-    ///
-    /// # Parameters
-    ///
-    /// - `tid`: Identifier of the thread to interrupt.
-    ///
-    fn interrupt_suspended_thread(&mut self, tid: ThreadIdentifier) {
-        let mut scanned: LinkedList<SleepingProcess> = LinkedList::new();
-        while let Some(process) = self.suspended.pop_front() {
-            if process.find_thread(tid).is_some() {
-                match process.interrupt_thread(tid, InterruptReason::Signaled) {
-                    Ok(interrupted_process) => self.interrupted.push_back(interrupted_process),
-                    Err(suspended_process) => self.suspended.push_front(suspended_process),
-                }
-                // Restore the processes scanned before the match, preserving their order.
-                while let Some(process) = scanned.pop_back() {
-                    self.suspended.push_front(process);
-                }
+        let mut process: ProcessRefMut = match self.find_process_mut(pid) {
+            Ok(process) => process,
+            Err(_) => return,
+        };
+        let bit: SigSet = 1u64 << (signum - 1);
+        let process_pending: bool = (process.state_mut().signals().pending() & bit) != 0;
+        let mut candidate: Option<ThreadIdentifier> = None;
+        let mut will_deliver: bool = false;
+        process.for_each_live_thread_mut(|mut thread| {
+            let state = thread.thread_state_mut();
+            if (state.blocked() & bit) != 0 || (!process_pending && (state.pending() & bit) == 0) {
                 return;
             }
-            scanned.push_back(process);
+            if let ThreadRefMut::Sleeping(thread) = thread {
+                candidate.get_or_insert(thread.id());
+            } else {
+                will_deliver = true;
+            }
+        });
+        if !will_deliver {
+            if let Some(tid) = candidate {
+                self.resume_sleeping_thread(tid, Some(InterruptReason::Signaled));
+            }
         }
-        // Thread not found among suspended processes; rollback the list to its original state.
-        self.suspended = scanned;
     }
 
     ///
@@ -2227,89 +2215,129 @@ impl ProcessManager {
     /// stale waiters without producing spurious error logs.
     ///
     fn try_wakeup_thread(&mut self, tid: ThreadIdentifier) -> bool {
-        // Check if thread belongs to the running process.
-        if self.get_running().find_thread(tid).is_some() {
-            let running_process: RunningProcess = self.take_running();
-            match running_process.wakeup(tid) {
-                Ok(running_process) => {
-                    self.running = Some(running_process);
-                    return true;
-                },
-                Err(running_process) => {
-                    // The thread exists in the running process but is not sleeping (e.g., it was
-                    // already woken). Report this as a no-op rather than an error.
-                    self.running = Some(running_process);
-                    return false;
-                },
-            }
-        }
-
-        // Check if thread belongs to a suspended or ready process.
-        match self.try_wakeup(tid) {
-            Some(runnable_process) => {
-                self.ready.push_back(runnable_process);
-                true
-            },
-            None => false,
-        }
+        self.resume_sleeping_thread(tid, None)
     }
 
-    fn try_wakeup(&mut self, tid: ThreadIdentifier) -> Option<RunnableProcess> {
-        // Search for the process in the list of sleeping processes.
-        let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
-        while let Some(process) = self.suspended.pop_front() {
-            // Found.
-            if process.find_thread(tid).is_some() {
-                match process.wakeup(tid) {
-                    Ok(runnable_process) => {
-                        while let Some(process) = suspended.pop_back() {
-                            self.suspended.push_front(process);
-                        }
-                        return Some(runnable_process);
+    /// Finds a sleeper across every live process state without changing queue order.
+    fn find_sleeping_thread(&self, tid: ThreadIdentifier) -> Option<SleepingThreadLocation> {
+        if matches!(
+            self.running
+                .as_ref()
+                .and_then(|process| process.find_thread(tid)),
+            Some(ThreadRef::Sleeping(_))
+        ) {
+            return Some(SleepingThreadLocation::Running);
+        }
+        if let Some(index) = self
+            .ready
+            .iter()
+            .position(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
+        {
+            return Some(SleepingThreadLocation::Ready(index));
+        }
+        if let Some(index) = self
+            .suspended
+            .iter()
+            .position(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
+        {
+            return Some(SleepingThreadLocation::Suspended(index));
+        }
+        self.interrupted
+            .iter()
+            .position(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
+            .map(SleepingThreadLocation::Interrupted)
+    }
+
+    /// Wakes or interrupts one sleeper. A stale target leaves every process list unchanged.
+    fn resume_sleeping_thread(
+        &mut self,
+        tid: ThreadIdentifier,
+        reason: Option<InterruptReason>,
+    ) -> bool {
+        let Some(location) = self.find_sleeping_thread(tid) else {
+            return false;
+        };
+        let resumed: bool = match location {
+            SleepingThreadLocation::Running => {
+                let process: RunningProcess = self.take_running();
+                let result: Result<RunningProcess, RunningProcess> = match reason {
+                    Some(reason) => process.interrupt_thread(tid, reason),
+                    None => process.wakeup(tid),
+                };
+                let resumed: bool = result.is_ok();
+                self.running = Some(match result {
+                    Ok(process) | Err(process) => process,
+                });
+                resumed
+            },
+            SleepingThreadLocation::Ready(index) => {
+                let process: RunnableProcess = self.ready.remove(index);
+                let interrupted: bool = reason.is_some();
+                let result: Result<RunnableProcess, RunnableProcess> = match reason {
+                    Some(reason) => process.interrupt_thread(tid, reason),
+                    None => process.wakeup(tid),
+                };
+                let resumed: bool = result.is_ok();
+                let process: RunnableProcess = match result {
+                    Ok(process) | Err(process) => process,
+                };
+                if interrupted || !resumed {
+                    let mut tail: LinkedList<RunnableProcess> = self.ready.split_off(index);
+                    self.ready.push_back(process);
+                    self.ready.append(&mut tail);
+                } else {
+                    self.ready.push_back(process);
+                }
+                resumed
+            },
+            SleepingThreadLocation::Suspended(index) => {
+                let process: SleepingProcess = self.suspended.remove(index);
+                let failed: Option<SleepingProcess> = match reason {
+                    Some(reason) => match process.interrupt_thread(tid, reason) {
+                        Ok(process) => {
+                            self.interrupted.push_back(process);
+                            None
+                        },
+                        Err(process) => Some(process),
                     },
-                    Err(suspended_process) => {
-                        self.suspended.push_front(suspended_process);
-                        while let Some(process) = suspended.pop_back() {
-                            self.suspended.push_front(process);
-                        }
-                        return None;
+                    None => match process.wakeup(tid) {
+                        Ok(process) => {
+                            self.ready.push_back(process);
+                            None
+                        },
+                        Err(process) => Some(process),
+                    },
+                };
+                if let Some(process) = failed {
+                    let mut tail: LinkedList<SleepingProcess> = self.suspended.split_off(index);
+                    self.suspended.push_back(process);
+                    self.suspended.append(&mut tail);
+                    false
+                } else {
+                    true
+                }
+            },
+            SleepingThreadLocation::Interrupted(index) => {
+                let process: InterruptedProcess = self.interrupted.remove(index);
+                match process.resume_sleeping_thread(tid, reason) {
+                    Ok(process) => {
+                        self.ready.push_back(process);
+                        true
+                    },
+                    Err(process) => {
+                        let mut tail: LinkedList<InterruptedProcess> =
+                            self.interrupted.split_off(index);
+                        self.interrupted.push_back(process);
+                        self.interrupted.append(&mut tail);
+                        false
                     },
                 }
-            } else {
-                suspended.push_back(process)
-            }
+            },
+        };
+        if !resumed {
+            error!("sleeping thread disappeared during resumption (tid={tid:?})");
         }
-        // Process is not in the list of sleeping processes, rollback list to its original state.
-        self.suspended = suspended;
-
-        // Search for the process in the list of ready processes.
-        let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
-        while let Some(process) = self.ready.pop_front() {
-            // Found.
-            if process.find_thread(tid).is_some() {
-                match process.wakeup(tid) {
-                    Ok(runnable_process) => {
-                        while let Some(process) = ready.pop_back() {
-                            self.ready.push_front(process);
-                        }
-                        return Some(runnable_process);
-                    },
-                    Err(ready_process) => {
-                        self.ready.push_front(ready_process);
-                        while let Some(process) = ready.pop_back() {
-                            self.ready.push_front(process);
-                        }
-                        return None;
-                    },
-                }
-            } else {
-                ready.push_back(process)
-            }
-        }
-        // Process is not in the list of ready processes, rollback list to its original state.
-        self.ready = ready;
-
-        None
+        resumed
     }
 
     ///
@@ -3287,70 +3315,7 @@ impl ProcessManager {
     /// `true` is returned if the thread was interrupted. Otherwise, `false` is returned.
     ///
     fn interrupt_rendezvous_thread(&mut self, tid: ThreadIdentifier) -> bool {
-        let reason: InterruptReason = InterruptReason::TimedOut;
-
-        if self
-            .running
-            .as_ref()
-            .is_some_and(|running| running.find_thread(tid).is_some())
-        {
-            let running: RunningProcess = self.take_running();
-            return match running.interrupt_thread(tid, reason) {
-                Ok(running) => {
-                    self.running = Some(running);
-                    true
-                },
-                Err(running) => {
-                    self.running = Some(running);
-                    false
-                },
-            };
-        }
-
-        let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
-        while let Some(process) = self.suspended.pop_front() {
-            if process.find_thread(tid).is_some() {
-                let interrupted: bool = match process.interrupt_thread(tid, reason) {
-                    Ok(process) => {
-                        self.ready.push_back(process.resume());
-                        true
-                    },
-                    Err(process) => {
-                        self.suspended.push_front(process);
-                        false
-                    },
-                };
-                while let Some(process) = suspended.pop_back() {
-                    self.suspended.push_front(process);
-                }
-                return interrupted;
-            }
-            suspended.push_back(process);
-        }
-        self.suspended = suspended;
-
-        let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
-        while let Some(process) = self.ready.pop_front() {
-            if process.find_thread(tid).is_some() {
-                let interrupted: bool = match process.interrupt_thread(tid, reason) {
-                    Ok(process) => {
-                        self.ready.push_front(process);
-                        true
-                    },
-                    Err(process) => {
-                        self.ready.push_front(process);
-                        false
-                    },
-                };
-                while let Some(process) = ready.pop_back() {
-                    self.ready.push_front(process);
-                }
-                return interrupted;
-            }
-            ready.push_back(process);
-        }
-        self.ready = ready;
-        false
+        self.resume_sleeping_thread(tid, Some(InterruptReason::TimedOut))
     }
 
     fn take_running(&mut self) -> RunningProcess {
@@ -3491,20 +3456,7 @@ impl ProcessManager {
     /// `true` is returned if the thread is sleeping. Otherwise, `false` is returned.
     ///
     pub fn is_thread_sleeping(&self, tid: ThreadIdentifier) -> bool {
-        if matches!(self.get_running().find_thread(tid), Some(ThreadRef::Sleeping(_))) {
-            return true;
-        }
-        self.ready
-            .iter()
-            .any(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
-            || self
-                .suspended
-                .iter()
-                .any(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
-            || self
-                .interrupted
-                .iter()
-                .any(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
+        self.find_sleeping_thread(tid).is_some()
     }
 
     ///
