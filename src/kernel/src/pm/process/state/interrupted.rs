@@ -21,6 +21,7 @@ use crate::pm::{
     thread::{
         InterruptReason,
         InterruptedThread,
+        ReadyThread,
         SleepingThread,
         ThreadRef,
         ThreadRefMut,
@@ -113,6 +114,41 @@ impl InterruptedProcess {
             self.sleeping_threads.take(),
             self.zombie_threads.take(),
         )
+    }
+
+    /// Makes a sleeping sibling ready, optionally with an interruption reason. Existing interrupted
+    /// threads retain their reasons; the selected sleeper can run without waiting for them to block.
+    pub(in crate::pm::process) fn resume_sleeping_thread(
+        mut self,
+        tid: ThreadIdentifier,
+        reason: Option<InterruptReason>,
+    ) -> Result<RunnableProcess, Self> {
+        let Some(threads) = self.sleeping_threads.take() else {
+            return Err(self);
+        };
+        match threads.remove_if(|thread| thread.id() == tid) {
+            Ok((threads, thread)) => {
+                let (interrupted, next): (VecDeque<InterruptedThread>, InterruptedThread) =
+                    self.interrupted_threads.pop_front();
+                let mut ready: NonEmptyVecDeque<ReadyThread> = NonEmptyVecDeque::new(next.resume());
+                let ready_thread: ReadyThread = match reason {
+                    Some(reason) => thread.interrupt(reason).resume(),
+                    None => thread.wakeup(),
+                };
+                ready.push_back(ready_thread);
+                Ok(RunnableProcess::from_state(
+                    self.state,
+                    ready,
+                    NonEmptyVecDeque::from(interrupted),
+                    NonEmptyVecDeque::from(threads),
+                    self.zombie_threads,
+                ))
+            },
+            Err(threads) => {
+                self.sleeping_threads = Some(threads);
+                Err(self)
+            },
+        }
     }
 
     ///

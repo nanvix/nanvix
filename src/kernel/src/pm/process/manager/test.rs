@@ -38,9 +38,11 @@ use crate::{
                     SignalDisposition,
                     SignalHandler,
                 },
+                InterruptedProcess,
                 PendingProcessTermination,
                 RunnableProcess,
                 RunningProcess,
+                SleepingProcess,
                 ZombieProcess,
             },
             LifecycleCreationReservation,
@@ -49,6 +51,7 @@ use crate::{
             ThreadLifecycleTerminationCredit,
         },
         thread::{
+            InterruptReason,
             ReadyThread,
             ThreadManager,
         },
@@ -92,6 +95,7 @@ use ::sys::{
         SIG_BLOCK,
         SIG_UNBLOCK,
     },
+    time::SystemTime,
     ExitStatus,
 };
 
@@ -1473,6 +1477,353 @@ fn caught_disposition() -> SignalDisposition {
     }))
 }
 
+#[derive(Clone, Copy, Debug)]
+enum SleeperLocation {
+    Running,
+    Ready,
+    Suspended,
+    Interrupted,
+}
+
+/// Parks the main thread alongside a sibling in each process state that can contain sleepers.
+fn sleeping_sibling_manager(
+    location: SleeperLocation,
+    blocked: SigSet,
+    sibling_blocked: SigSet,
+) -> Option<(ProcessManager, ProcessIdentifier, ThreadIdentifier)> {
+    let mut manager: ProcessManager = new_user_process_manager()?;
+    let pid: ProcessIdentifier = manager.get_pid();
+    let tid: ThreadIdentifier = manager.get_tid();
+    manager
+        .get_running_mut()
+        .running_mut()
+        .thread_state_mut()
+        .set_blocked(blocked);
+    manager
+        .get_running_mut()
+        .add_thread(signal_thread(test_tid(), sibling_blocked, 0));
+    manager
+        .get_running_mut()
+        .state_mut()
+        .signals_mut()
+        .set_disposition(SIGUSR1, caught_disposition());
+    let runnable: RunnableProcess = match manager.take_running().sleep(None) {
+        Ok((process, _)) => process,
+        Err(_) => {
+            error!("fixture lost its ready sibling");
+            return None;
+        },
+    };
+    // SAFETY: the in-kernel test runner serializes access to both global managers.
+    let vmem: Vmem = match unsafe { VirtMemoryManager::get() }
+        .new_vmem(unsafe { ProcessManager::get() }.current_vmem())
+    {
+        Ok(vmem) => vmem,
+        Err(error) => {
+            error!("failed to allocate notifier address space (error={error:?})");
+            return None;
+        },
+    };
+    manager.running = Some(
+        RunnableProcess::new_uncommitted(
+            ProcessIdentifier::from(2),
+            ProcessIdentifier::KERNEL,
+            signal_thread(ThreadIdentifier::from(2000), 0, 0),
+            vmem,
+        )
+        .run()
+        .0,
+    );
+    match location {
+        SleeperLocation::Running => manager.running = Some(runnable.run().0),
+        SleeperLocation::Ready => manager.ready.push_back(runnable),
+        SleeperLocation::Suspended | SleeperLocation::Interrupted => {
+            let sleeping: SleepingProcess = match runnable.run().0.sleep(None) {
+                Err((process, _)) => process,
+                Ok(_) => {
+                    error!("fixture did not fully suspend");
+                    return None;
+                },
+            };
+            if matches!(location, SleeperLocation::Suspended) {
+                manager.suspended.push_back(sleeping);
+            } else {
+                match sleeping.interrupt_thread(test_tid(), InterruptReason::TimedOut) {
+                    Ok(process) => manager.interrupted.push_back(process),
+                    Err(_) => {
+                        error!("failed to interrupt the fixture sibling");
+                        return None;
+                    },
+                }
+            }
+        },
+    }
+    Some((manager, pid, tid))
+}
+
+/// Runs the fixture's woken thread and checks the reason observed by its blocking call.
+fn check_sleeper_resumption(
+    manager: &mut ProcessManager,
+    pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
+    expected: Option<InterruptReason>,
+    interrupted_sibling: bool,
+) -> bool {
+    let mut process: RunnableProcess = if manager.get_pid() == pid {
+        manager.take_running().schedule().0
+    } else if let Some(index) = manager.ready.iter().position(|p| p.state().pid() == pid) {
+        manager.ready.remove(index)
+    } else if let Some(index) = manager
+        .interrupted
+        .iter()
+        .position(|p| p.state().pid() == pid)
+    {
+        manager.interrupted.remove(index).resume()
+    } else {
+        error!("woken fixture is not schedulable");
+        return false;
+    };
+    // Both threads must be schedulable without requiring either one to block again.
+    for _ in 0..2 {
+        let (running, reason, _, _) = process.run();
+        if running.get_tid() == tid {
+            if reason != expected {
+                error!(
+                    "sleeper resumed with wrong reason (reason={reason:?}, expected={expected:?})"
+                );
+                return false;
+            }
+            return true;
+        }
+        let sibling_reason: Option<InterruptReason> = if interrupted_sibling {
+            Some(InterruptReason::TimedOut)
+        } else {
+            None
+        };
+        if reason != sibling_reason {
+            error!("resuming the sleeper lost the sibling's interruption reason");
+            return false;
+        }
+        process = running.schedule().0;
+    }
+    error!("notified recipient did not run");
+    false
+}
+
+/// A one-shot notification must wake sleepers even when a sibling was already interrupted.
+fn test_wakeup_searches_all_process_states() -> bool {
+    for location in [
+        SleeperLocation::Running,
+        SleeperLocation::Ready,
+        SleeperLocation::Suspended,
+        SleeperLocation::Interrupted,
+    ] {
+        let Some((mut manager, pid, tid)) = sleeping_sibling_manager(location, 0, 0) else {
+            return false;
+        };
+        if !manager.is_thread_sleeping(tid) || !manager.try_wakeup_thread(tid) {
+            error!("one-shot wakeup missed a sleeping thread (location={location:?})");
+            return false;
+        }
+        if manager.try_wakeup_thread(tid)
+            || manager.try_wakeup_thread(ThreadIdentifier::from(9999))
+            || !check_sleeper_resumption(
+                &mut manager,
+                pid,
+                tid,
+                None,
+                matches!(location, SleeperLocation::Interrupted),
+            )
+        {
+            error!("wakeup did not preserve stale-waiter semantics (location={location:?})");
+            return false;
+        }
+    }
+    true
+}
+
+/// A caught signal must reach the only unmasked recipient, regardless of its process's state.
+fn test_caught_signal_finds_sleeping_recipient() -> bool {
+    for location in [
+        SleeperLocation::Ready,
+        SleeperLocation::Running,
+        SleeperLocation::Suspended,
+        SleeperLocation::Interrupted,
+    ] {
+        let Some((mut manager, pid, tid)) =
+            sleeping_sibling_manager(location, 0, signal_bit(SIGUSR1))
+        else {
+            return false;
+        };
+        if let Err(error) = manager.kill(pid, pid, SIGUSR1) {
+            error!("failed to post caught signal (error={error:?})");
+            return false;
+        }
+        if manager.is_thread_sleeping(tid) {
+            error!("caught signal missed sleeping recipient (location={location:?})");
+            return false;
+        }
+        if !check_sleeper_resumption(
+            &mut manager,
+            pid,
+            tid,
+            Some(InterruptReason::Signaled),
+            matches!(location, SleeperLocation::Interrupted),
+        ) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Do not interrupt a masked sleeper or one whose runnable sibling can handle the signal.
+fn test_caught_signal_preserves_ineligible_sleepers() -> bool {
+    for location in [
+        SleeperLocation::Running,
+        SleeperLocation::Ready,
+        SleeperLocation::Suspended,
+        SleeperLocation::Interrupted,
+    ] {
+        for (blocked, sibling_blocked) in [(signal_bit(SIGUSR1), signal_bit(SIGUSR1)), (0, 0)] {
+            let Some((mut manager, pid, tid)) =
+                sleeping_sibling_manager(location, blocked, sibling_blocked)
+            else {
+                return false;
+            };
+            if let Err(error) = manager.kill(pid, pid, SIGUSR1) {
+                error!("failed to post caught signal (error={error:?})");
+                return false;
+            }
+            let should_sleep: bool =
+                blocked != 0 || !matches!(location, SleeperLocation::Suspended);
+            if manager.is_thread_sleeping(tid) != should_sleep {
+                error!("caught signal ignored recipient eligibility (location={location:?})");
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Thread-directed pending state must not qualify another unmasked sibling.
+fn test_caught_signal_respects_pending_thread_target() -> bool {
+    for target_sleeper in [false, true] {
+        let Some((mut manager, pid, tid)) = sleeping_sibling_manager(SleeperLocation::Ready, 0, 0)
+        else {
+            return false;
+        };
+        let target: ThreadIdentifier = if target_sleeper { tid } else { test_tid() };
+        let mut thread = match manager.find_thread_mut(target) {
+            Ok(thread) => thread,
+            Err(_) => return false,
+        };
+        thread.thread_state_mut().post_pending(SIGUSR1);
+        if let Err(error) = manager.sigaction(pid, SIGUSR1, Some(caught_disposition())) {
+            error!("failed to reevaluate directed pending signal (error={error:?})");
+            return false;
+        }
+        if manager.is_thread_sleeping(tid) == target_sleeper {
+            error!("caught signal interrupted the wrong thread-directed recipient");
+            return false;
+        }
+        if target_sleeper
+            && !check_sleeper_resumption(
+                &mut manager,
+                pid,
+                tid,
+                Some(InterruptReason::Signaled),
+                false,
+            )
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// An interrupted thread retained behind masked ready threads must not suppress a sleeper wakeup.
+fn test_retained_interruption_does_not_hide_signal_recipient() -> bool {
+    for location in [
+        SleeperLocation::Ready,
+        SleeperLocation::Running,
+        SleeperLocation::Interrupted,
+    ] {
+        let Some((mut manager, pid, tid)) =
+            sleeping_sibling_manager(SleeperLocation::Ready, 0, signal_bit(SIGUSR1))
+        else {
+            return false;
+        };
+        let Some(process) = manager.ready.pop_front() else {
+            error!("missing runnable signal fixture");
+            return false;
+        };
+        let mut running: RunningProcess = process.run().0;
+        running.add_thread(signal_thread(ThreadIdentifier::from(1001), 0, 0));
+        let now: SystemTime = crate::pm::clock::now();
+        let process: RunnableProcess = match running.sleep(Some(now)) {
+            Ok((process, _)) => process,
+            Err(_) => {
+                error!("signal fixture lost its third thread");
+                return false;
+            },
+        };
+        let sleeping: SleepingProcess = match process.run().0.sleep(Some(now)) {
+            Err((process, _)) => process,
+            Ok(_) => {
+                error!("signal fixture did not fully suspend");
+                return false;
+            },
+        };
+        let interrupted: InterruptedProcess = match sleeping.wakeup_alarm(now) {
+            Ok(process) => process,
+            Err(_) => {
+                error!("signal fixture did not interrupt timed-out siblings");
+                return false;
+            },
+        };
+        match location {
+            SleeperLocation::Ready => manager.ready.push_back(interrupted.resume()),
+            SleeperLocation::Running => manager.running = Some(interrupted.resume().run().0),
+            SleeperLocation::Interrupted => manager.interrupted.push_back(interrupted),
+            SleeperLocation::Suspended => unreachable!("fixture must retain interrupted siblings"),
+        }
+        if let Err(error) = manager.kill(pid, pid, SIGUSR1) {
+            error!("failed to signal fixture with retained interruption (error={error:?})");
+            return false;
+        }
+        if manager.is_thread_sleeping(tid) {
+            error!(
+                "unschedulable interrupted sibling hid signal recipient (location={location:?})"
+            );
+            return false;
+        }
+        if !check_sleeper_resumption(
+            &mut manager,
+            pid,
+            tid,
+            Some(InterruptReason::Signaled),
+            !matches!(location, SleeperLocation::Running),
+        ) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Rendezvous cleanup must use the same complete lookup and retain its timeout reason.
+fn test_rendezvous_interrupts_sleeping_sibling() -> bool {
+    let Some((mut manager, pid, tid)) =
+        sleeping_sibling_manager(SleeperLocation::Interrupted, 0, 0)
+    else {
+        return false;
+    };
+    if !manager.interrupt_rendezvous_thread(tid) || manager.interrupt_rendezvous_thread(tid) {
+        error!("rendezvous interruption missed sleeper or accepted stale target");
+        return false;
+    }
+    check_sleeper_resumption(&mut manager, pid, tid, Some(InterruptReason::TimedOut), true)
+}
+
 /// Verifies that blocked default terminate, core, and stop signals remain pending.
 fn test_blocked_default_signals_stay_pending() -> bool {
     for signum in [SIGTERM, SIGQUIT, SIGTSTP] {
@@ -2339,6 +2690,12 @@ pub(in crate::pm::process) fn test() -> bool {
     passed &= run_test!(test_exec_replacement_produces_thread_termination_only);
     passed &= run_test!(test_exec_replacement_inherits_signal_mask);
     passed &= run_test!(test_exec_replacement_preserves_pending_signals);
+    passed &= run_test!(test_retained_interruption_does_not_hide_signal_recipient);
+    passed &= run_test!(test_caught_signal_finds_sleeping_recipient);
+    passed &= run_test!(test_wakeup_searches_all_process_states);
+    passed &= run_test!(test_caught_signal_preserves_ineligible_sleepers);
+    passed &= run_test!(test_caught_signal_respects_pending_thread_target);
+    passed &= run_test!(test_rendezvous_interrupts_sleeping_sibling);
     passed &= run_test!(test_sigaction_discards_pending_ignored_signals);
     passed &= run_test!(test_blocked_default_signals_stay_pending);
     passed &= run_test!(test_pending_default_signal_respects_target_masks);
