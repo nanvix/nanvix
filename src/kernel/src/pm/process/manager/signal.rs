@@ -575,20 +575,28 @@ impl ProcessManager {
             None => return SignalDeliveryOutcome::Escalate,
         };
 
-        // Commit the signal-state changes now that the frame is in place.
+        // Commit the signal-state changes now that the frame is in place. One delivery consumes one
+        // pending instance: the thread-directed one first, else the process-directed one, so an
+        // instance pending in both sets runs the handler again on a later delivery.
         let nodefer: bool = (sa_flags & SA_NODEFER) != 0;
         let new_blocked: u64 = next_blocked(blocked, sa_mask, signum, nodefer) & !UNBLOCKABLE;
+        let mut consumed_thread_pending: bool = false;
         {
             if let Some(mut thread) = self.get_running_mut().find_thread_mut(tid) {
                 let state = thread.thread_state_mut();
                 state.set_blocked(new_blocked);
-                state.clear_pending(signum);
+                if (state.pending() & (1u64 << (signum - 1))) != 0 {
+                    state.clear_pending(signum);
+                    consumed_thread_pending = true;
+                }
                 state.record_signal_delivery();
             }
         }
         {
             let signals = self.get_running_mut().state_mut().signals_mut();
-            signals.clear_pending(signum);
+            if !consumed_thread_pending {
+                signals.clear_pending(signum);
+            }
             if (sa_flags & SA_RESETHAND) != 0 {
                 signals.set_disposition(signum, SignalDisposition::Default);
             }
@@ -705,7 +713,9 @@ impl ProcessManager {
             _ => return SyncSignalOutcome::Terminate,
         };
 
-        // Commit the signal-state changes now that the frame is in place.
+        // Commit the signal-state changes now that the frame is in place. The fault posted a
+        // thread-directed instance; consume only that one and leave any process-directed instance
+        // pending for its own delivery.
         let nodefer: bool = (sa_flags & SA_NODEFER) != 0;
         let new_blocked: u64 = next_blocked(blocked, sa_mask, signum, nodefer) & !UNBLOCKABLE;
         {
@@ -718,7 +728,6 @@ impl ProcessManager {
         }
         {
             let signals = self.get_running_mut().state_mut().signals_mut();
-            signals.clear_pending(signum);
             if (sa_flags & SA_RESETHAND) != 0 {
                 signals.set_disposition(signum, SignalDisposition::Default);
             }

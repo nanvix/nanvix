@@ -95,6 +95,29 @@ static void test_directed_pending(void)
     assert(errno == EDOM);
 }
 
+static void test_process_and_thread_pending(void)
+{
+    // A process-directed and a thread-directed instance of one signal are distinct; each must be
+    // delivered rather than one handler invocation consuming both.
+    sigset_t blocked;
+    sigset_t pending;
+    assert(sigemptyset(&blocked) == 0);
+    assert(sigaddset(&blocked, SIGUSR1) == 0);
+    assert(pthread_sigmask(SIG_BLOCK, &blocked, NULL) == 0);
+    delivered = 0;
+    assert(kill(getpid(), SIGUSR1) == 0);
+    assert(pthread_kill(pthread_self(), SIGUSR1) == 0);
+    assert(sigpending(&pending) == 0);
+    assert(sigismember(&pending, SIGUSR1) == 1);
+    assert(delivered == 0);
+
+    assert(pthread_sigmask(SIG_UNBLOCK, &blocked, NULL) == 0);
+    assert(delivered == 2);
+    assert(recipient == pthread_self());
+    assert(sigpending(&pending) == 0);
+    assert(sigismember(&pending, SIGUSR1) == 0);
+}
+
 int main(void)
 {
     alarm(TEST_TIMEOUT_SECONDS);
@@ -123,6 +146,7 @@ int main(void)
     assert(recipient == self);
 
     test_directed_pending();
+    test_process_and_thread_pending();
     alarm(0);
     return (0);
 }
