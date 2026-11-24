@@ -32,7 +32,7 @@ use ::sys::{
 /// # Description
 ///
 /// Kernel call handler for `sigpending()`, which reports the set of signals that are pending on the
-/// calling process but blocked from delivery to the calling thread (`pending & blocked`).
+/// calling process or thread but blocked from delivery to the calling thread.
 ///
 /// # Parameters
 ///

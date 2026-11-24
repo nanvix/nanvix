@@ -189,6 +189,8 @@ pub enum SleepError {
 enum PostAction {
     /// Nothing further to do (the signal was ignored or discarded).
     None,
+    /// A blocked default action must remain pending.
+    Pending,
     /// The signal's default action terminates the target.
     Terminate,
     /// A caught signal was posted: interrupt a blocked candidate thread so its blocking call reports
@@ -962,8 +964,8 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Returns the set of signals that are pending on the calling process but blocked from delivery
-    /// to the calling thread (`pending & blocked`), as reported by `sigpending()`.
+    /// Returns the signals pending on the calling process or thread that are blocked from delivery
+    /// to the calling thread, as reported by `sigpending()`.
     ///
     /// # Parameters
     ///
@@ -979,13 +981,17 @@ impl ProcessManager {
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<SigSet, Error> {
-        let blocked: SigSet = self.find_thread_mut(tid)?.thread_state_mut().blocked();
+        let (blocked, thread_pending): (SigSet, SigSet) = {
+            let mut thread: ThreadRefMut = self.find_thread_mut(tid)?;
+            let state = thread.thread_state_mut();
+            (state.blocked(), state.pending())
+        };
         let pending: SigSet = self
             .find_process_mut(pid)?
             .state_mut()
             .signals_mut()
             .pending();
-        Ok(pending & blocked)
+        Ok((pending | thread_pending) & blocked)
     }
 
     ///
@@ -1187,8 +1193,62 @@ impl ProcessManager {
             return Err(Error::new(ErrorCode::PermissionDenied, reason));
         }
 
-        // The target must exist. This also services the null-signal probe below.
-        self.find_process(target)?;
+        self.post_signal(caller, target, None, signum)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Posts a signal to a live thread in the calling process. Only that thread may catch it or
+    /// unblock a pending default action; terminate, stop, and continue still affect the process.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Target thread identifier.
+    /// - `signum`: Signal number, or zero for an existence check.
+    ///
+    /// # Returns
+    ///
+    /// The remaining work for the kernel-call handler, or an error on failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NoSuchProcess` for a missing, zombie, or foreign target and `InvalidArgument` for
+    /// an invalid signal.
+    ///
+    pub fn kill_thread(
+        &mut self,
+        tid: ThreadIdentifier,
+        signum: usize,
+    ) -> Result<KillOutcome, Error> {
+        let caller: ProcessIdentifier = self.get_pid();
+        self.post_signal(caller, caller, Some(tid), signum)
+    }
+
+    /// Shares signal generation and default actions between process- and thread-directed posting.
+    /// A thread target is only supplied by `kill_thread()` for the currently running process.
+    fn post_signal(
+        &mut self,
+        caller: ProcessIdentifier,
+        target: ProcessIdentifier,
+        target_tid: Option<ThreadIdentifier>,
+        signum: usize,
+    ) -> Result<KillOutcome, Error> {
+        let blocked: SigSet = {
+            let mut process: ProcessRefMut = self.find_process_mut(target)?;
+            match target_tid {
+                Some(tid) => match process.find_thread_mut(tid) {
+                    Some(ThreadRefMut::Zombie(_)) | None => {
+                        let reason: &str =
+                            "signal target is not a live thread in the calling process";
+                        error!("{reason} (pid={target:?}, tid={tid:?})");
+                        return Err(Error::new(ErrorCode::NoSuchProcess, reason));
+                    },
+                    Some(mut thread) => thread.thread_state_mut().blocked(),
+                },
+                None => process.blocked_by_all(),
+            }
+        } & !UNBLOCKABLE;
 
         // A null signal performs only the permission/existence check.
         if signum == 0 {
@@ -1220,15 +1280,11 @@ impl ProcessManager {
         // any termination, interruption, or wakeup so those operations can re-borrow it.
         let action: PostAction = {
             let mut process: ProcessRefMut = self.find_process_mut(target)?;
-            let blocked: SigSet = process.blocked_by_all() & !UNBLOCKABLE;
             let bit: SigSet = 1u64 << (signum - 1);
             let signals: &mut SignalControl = process.state_mut().signals_mut();
             match signals.disposition(signum) {
                 Some(SignalDisposition::Ignore) => PostAction::None,
-                Some(SignalDisposition::Handler(_)) => {
-                    signals.post(signum);
-                    PostAction::Interrupt
-                },
+                Some(SignalDisposition::Handler(_)) => PostAction::Interrupt,
                 Some(SignalDisposition::Default)
                     if (blocked & bit) != 0
                         && matches!(
@@ -1236,8 +1292,7 @@ impl ProcessManager {
                             DefaultAction::Terminate | DefaultAction::Core | DefaultAction::Stop
                         ) =>
                 {
-                    signals.post(signum);
-                    PostAction::None
+                    PostAction::Pending
                 },
                 Some(SignalDisposition::Default) => match default_action(signum) {
                     DefaultAction::Terminate => PostAction::Terminate,
@@ -1265,14 +1320,36 @@ impl ProcessManager {
             }
         };
 
+        if matches!(action, PostAction::Interrupt | PostAction::Pending) {
+            match target_tid {
+                Some(tid) => self
+                    .find_thread_mut(tid)?
+                    .thread_state_mut()
+                    .post_pending(signum),
+                None => {
+                    self.find_process_mut(target)?
+                        .state_mut()
+                        .signals_mut()
+                        .post(signum);
+                },
+            }
+        }
+
         match action {
             PostAction::Terminate => return self.kill_terminate(caller, target),
-            PostAction::Interrupt => self.interrupt_signal_candidate(target, signum),
+            PostAction::Interrupt => match target_tid {
+                Some(tid) if (blocked & (1u64 << (signum - 1))) == 0 => {
+                    self.resume_sleeping_thread(tid, Some(InterruptReason::Signaled));
+                    self.get_running_mut().resume_interrupted_thread(tid);
+                },
+                Some(_) => {},
+                None => self.interrupt_signal_candidate(target, signum),
+            },
             PostAction::Stop => {
                 self.find_process_mut(target)?.discard_pending(signum);
                 self.stop_process(target)?;
             },
-            PostAction::None => {},
+            PostAction::None | PostAction::Pending => {},
         }
         Ok(KillOutcome::Done)
     }

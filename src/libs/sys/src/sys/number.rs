@@ -133,6 +133,8 @@ pub enum KcallNumber {
     Sigcheckpoint = KcallNumber::NR_SIGCHECKPOINT_SYSCALL,
     /// Receives a message while atomically restoring the calling thread's signal mask.
     RecvRestoringSignals = KcallNumber::NR_RECV_RESTORING_SIGNALS_SYSCALL,
+    /// Posts a signal to a thread in the calling process.
+    KillThread = KcallNumber::NR_KILL_THREAD_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -189,6 +191,7 @@ impl KcallNumber {
     const NR_ALARM_SYSCALL: u32 = 47;
     const NR_SIGCHECKPOINT_SYSCALL: u32 = 48;
     const NR_RECV_RESTORING_SIGNALS_SYSCALL: u32 = 49;
+    const NR_KILL_THREAD_SYSCALL: u32 = 50;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -246,6 +249,7 @@ impl From<u32> for KcallNumber {
             Self::NR_ALARM_SYSCALL => KcallNumber::Alarm,
             Self::NR_SIGCHECKPOINT_SYSCALL => KcallNumber::Sigcheckpoint,
             Self::NR_RECV_RESTORING_SIGNALS_SYSCALL => KcallNumber::RecvRestoringSignals,
+            Self::NR_KILL_THREAD_SYSCALL => KcallNumber::KillThread,
             _ => KcallNumber::Invalid,
         }
     }
@@ -305,6 +309,7 @@ impl From<KcallNumber> for u32 {
             KcallNumber::Alarm => KcallNumber::NR_ALARM_SYSCALL,
             KcallNumber::Sigcheckpoint => KcallNumber::NR_SIGCHECKPOINT_SYSCALL,
             KcallNumber::RecvRestoringSignals => KcallNumber::NR_RECV_RESTORING_SIGNALS_SYSCALL,
+            KcallNumber::KillThread => KcallNumber::NR_KILL_THREAD_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
     }

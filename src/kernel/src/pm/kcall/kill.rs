@@ -17,7 +17,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
     ExitStatus,
 };
 
@@ -67,6 +70,41 @@ pub fn kill(caller_pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult 
         pm.kill(caller_pid, target, signum)
     };
 
+    finish_kill(outcome)
+}
+
+///
+/// # Description
+///
+/// Posts a signal to a live thread in the calling process.
+///
+/// # Parameters
+///
+/// - `arg0`: Encoded target thread identifier.
+/// - `arg1`: Signal number, or zero for an existence check.
+///
+/// # Returns
+///
+/// Success or the error code. A fatal default action terminates the calling process.
+///
+pub fn kill_thread(arg0: u32, arg1: u32) -> KcallResult {
+    let tid: ThreadIdentifier = match ThreadIdentifier::try_from(arg0) {
+        Ok(tid) => tid,
+        Err(error) => {
+            error!("invalid signal target (tid={arg0}, error={error:?})");
+            return KcallResult::Error(ErrorCode::NoSuchProcess.into());
+        },
+    };
+    let outcome: Result<KillOutcome, Error> = {
+        // SAFETY: the process manager is initialized and access is synchronized.
+        let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+        pm.kill_thread(tid, arg1 as usize)
+    };
+    finish_kill(outcome)
+}
+
+/// Completes signal posting after releasing the process-manager borrow.
+fn finish_kill(outcome: Result<KillOutcome, Error>) -> KcallResult {
     match outcome {
         Ok(KillOutcome::Done) => KcallResult::ok(),
         Ok(KillOutcome::TerminateSelf) => {

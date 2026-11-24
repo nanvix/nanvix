@@ -61,6 +61,7 @@ ALL_POSIX_TESTS := \
 	test-c-noop \
 	test-c-pathconf \
 	test-c-posix-timers \
+	test-c-pthread-kill \
 	test-c-regex \
 	test-c-send \
 	test-c-setjmp \
