@@ -330,6 +330,36 @@ pub fn __kcall_kill(pid: ProcessIdentifier, signum: i32) -> Result<(), Error> {
     }
 }
 
+///
+/// # Description
+///
+/// Posts a signal to a live thread in the calling process. Signal masks and pending state are
+/// specific to the target thread; dispositions remain process-wide.
+///
+/// # Parameters
+///
+/// - `tid`: Identifier of the target thread.
+/// - `signum`: Signal number, or zero to check existence without posting a signal.
+///
+/// # Returns
+///
+/// Empty on success, or an error on failure.
+///
+/// # Errors
+///
+/// Returns `InvalidArgument` for an invalid signal or `NoSuchProcess` for a missing, terminated,
+/// or foreign thread.
+///
+#[unsafe(no_mangle)]
+pub fn __kcall_kill_thread(tid: ThreadIdentifier, signum: i32) -> Result<(), Error> {
+    let result: i64 = kcall2!(KcallNumber::KillThread.into(), u32::try_from(tid)?, signum as u32);
+    if result < 0 {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to kill_thread()"))
+    } else {
+        Ok(())
+    }
+}
+
 //==================================================================================================
 // Signal Checkpoint
 //==================================================================================================
@@ -469,7 +499,7 @@ pub unsafe fn __kcall_sigprocmask(
 ///
 /// # Description
 ///
-/// Retrieves the set of signals that are pending on the calling process but blocked from delivery
+/// Retrieves the set of signals pending on the calling process or thread but blocked from delivery
 /// to the calling thread.
 ///
 /// # Parameters

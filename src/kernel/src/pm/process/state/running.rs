@@ -629,6 +629,19 @@ impl RunningProcess {
         }
     }
 
+    /// Makes a retained interrupted recipient schedulable without replacing its interruption reason.
+    pub(in crate::pm::process) fn resume_interrupted_thread(&mut self, tid: ThreadIdentifier) {
+        if let Some(threads) = self.interrupted_threads.take() {
+            match threads.remove_if(|thread| thread.id() == tid) {
+                Ok((threads, thread)) => {
+                    self.interrupted_threads = NonEmptyVecDeque::from(threads);
+                    self.add_thread(thread.resume());
+                },
+                Err(threads) => self.interrupted_threads = Some(threads),
+            }
+        }
+    }
+
     /// Interrupts one sleeping thread and moves it to the ready set with `reason`.
     pub fn interrupt_thread(
         mut self,

@@ -46,7 +46,10 @@ pub use execv::execv;
 pub use get_thread_data_area::get_thread_data_area;
 pub use gettime::gettime;
 pub use join_thread::join_thread;
-pub use kill::kill;
+pub use kill::{
+    kill,
+    kill_thread,
+};
 pub use lock_mutex::lock_mutex;
 pub use mcopy::mcopy;
 pub use mctrl::mctrl;

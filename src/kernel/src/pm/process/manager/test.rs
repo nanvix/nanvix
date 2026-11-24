@@ -86,7 +86,9 @@ use ::sys::{
         ThreadIdentifier,
         SIGCHLD,
         SIGCONT,
+        SIGKILL,
         SIGQUIT,
+        SIGSTOP,
         SIGTERM,
         SIGTSTP,
         SIGUSR1,
@@ -1741,6 +1743,179 @@ fn test_caught_signal_respects_pending_thread_target() -> bool {
     true
 }
 
+/// Thread signals reject foreign targets and wake only the named, unmasked sleeper.
+fn test_thread_kill_targets_live_sibling() -> bool {
+    let Some((mut foreign, _, foreign_tid)) =
+        sleeping_sibling_manager(SleeperLocation::Ready, 0, 0)
+    else {
+        return false;
+    };
+    for signum in [0, SIGUSR1] {
+        if !matches!(foreign.kill_thread(foreign_tid, signum),
+            Err(error) if error.code == ErrorCode::NoSuchProcess)
+        {
+            error!("thread signal accepted a target in another process");
+            return false;
+        }
+    }
+    for blocked in [0, signal_bit(SIGUSR1)] {
+        let Some((mut manager, pid, tid)) =
+            sleeping_sibling_manager(SleeperLocation::Running, blocked, 0)
+        else {
+            return false;
+        };
+        if !matches!(manager.kill_thread(tid, 0), Ok(KillOutcome::Done))
+            || !manager.is_thread_sleeping(tid)
+        {
+            error!("null thread signal changed the target's scheduling state");
+            return false;
+        }
+        if !matches!(manager.kill_thread(tid, SIGUSR1), Ok(KillOutcome::Done)) {
+            error!("failed to post thread-directed signal");
+            return false;
+        }
+        let Some(thread) = manager.get_running().find_thread(tid) else {
+            return false;
+        };
+        if thread.thread_state().pending() != signal_bit(SIGUSR1)
+            || manager.get_running().state().signals().pending() != 0
+            || manager
+                .get_running_mut()
+                .running_mut()
+                .thread_state()
+                .pending()
+                != 0
+            || manager.is_thread_sleeping(tid) != (blocked != 0)
+        {
+            error!("thread signal ignored target ownership or its mask");
+            return false;
+        }
+        if !matches!(manager.sigpending(pid, tid),
+            Ok(pending) if pending == (signal_bit(SIGUSR1) & blocked))
+        {
+            error!("sigpending did not report the target's blocked thread-directed signal");
+            return false;
+        }
+        if blocked == 0
+            && !check_sleeper_resumption(
+                &mut manager,
+                pid,
+                tid,
+                Some(InterruptReason::Signaled),
+                false,
+            )
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// A retained interrupted target must run even while its unmasked sibling stays runnable.
+fn test_thread_kill_resumes_interrupted_target() -> bool {
+    let Some((mut manager, _, _)) = sleeping_sibling_manager(SleeperLocation::Ready, 0, 0) else {
+        return false;
+    };
+    let Some(process) = manager.ready.pop_front() else {
+        return false;
+    };
+    let tid: ThreadIdentifier = ThreadIdentifier::from(1001);
+    let mut running: RunningProcess = process.run().0;
+    running.add_thread(signal_thread(tid, 0, 0));
+    let now: SystemTime = crate::pm::clock::now();
+    let runnable: RunnableProcess = match running.sleep(Some(now)) {
+        Ok((process, _)) => process,
+        Err(_) => return false,
+    };
+    let sleeping: SleepingProcess = match runnable.run().0.sleep(Some(now)) {
+        Err((process, _)) => process,
+        Ok(_) => return false,
+    };
+    let interrupted: InterruptedProcess = match sleeping.wakeup_alarm(now) {
+        Ok(process) => process,
+        Err(_) => return false,
+    };
+    manager.running = Some(interrupted.resume().run().0);
+    if manager.get_tid() == tid {
+        error!("fixture did not retain its target as interrupted");
+        return false;
+    }
+    if !matches!(manager.kill_thread(tid, SIGUSR1), Ok(KillOutcome::Done)) {
+        error!("failed to signal retained interrupted target");
+        return false;
+    }
+    let mut process: RunnableProcess = manager.take_running().schedule().0;
+    for _ in 0..2 {
+        let (mut running, reason, _, _) = process.run();
+        if running.get_tid() == tid {
+            if reason != Some(InterruptReason::TimedOut)
+                || running.running_mut().thread_state().pending() != signal_bit(SIGUSR1)
+            {
+                error!("resuming the target lost its signal or original interruption reason");
+                return false;
+            }
+            return true;
+        }
+        process = running.schedule().0;
+    }
+    error!("thread-directed signal left its interrupted target unschedulable");
+    false
+}
+
+/// Only the named thread's mask may defer a default action, which still affects the process.
+fn test_thread_kill_default_actions() -> bool {
+    for signum in [SIGTERM, SIGTSTP, SIGKILL, SIGSTOP] {
+        let Some(mut manager) = new_user_process_manager() else {
+            return false;
+        };
+        let tid: ThreadIdentifier = manager.get_tid();
+        let bit: SigSet = signal_bit(signum);
+        manager
+            .get_running_mut()
+            .running_mut()
+            .thread_state_mut()
+            .set_blocked(bit);
+        manager
+            .get_running_mut()
+            .add_thread(signal_thread(test_tid(), 0, 0));
+        let outcome: Result<KillOutcome, Error> = manager.kill_thread(tid, signum);
+        if signum == SIGKILL {
+            if !matches!(outcome, Ok(KillOutcome::TerminateSelf)) {
+                error!("thread-directed SIGKILL did not terminate the process");
+                return false;
+            }
+        } else if signum == SIGSTOP {
+            if !matches!(outcome, Ok(KillOutcome::Done))
+                || !manager.get_running().state().is_stopped()
+            {
+                error!("thread-directed SIGSTOP did not stop the process");
+                return false;
+            }
+        } else {
+            if !matches!(outcome, Ok(KillOutcome::Done))
+                || manager.deliver_pending_default_signal().is_some()
+                || manager.get_running().state().signals().pending() != 0
+                || manager
+                    .get_running_mut()
+                    .running_mut()
+                    .thread_state()
+                    .pending()
+                    != bit
+            {
+                error!("an unmasked sibling permitted a blocked thread-directed default");
+                return false;
+            }
+            if manager.sigprocmask(tid, SIG_UNBLOCK, Some(bit)).is_err()
+                || manager.deliver_pending_default_signal() != Some(default_action(signum))
+            {
+                error!("unblocking the target did not apply the process-wide default");
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// An interrupted thread retained behind masked ready threads must not suppress a sleeper wakeup.
 fn test_retained_interruption_does_not_hide_signal_recipient() -> bool {
     for location in [
@@ -2695,6 +2870,9 @@ pub(in crate::pm::process) fn test() -> bool {
     passed &= run_test!(test_wakeup_searches_all_process_states);
     passed &= run_test!(test_caught_signal_preserves_ineligible_sleepers);
     passed &= run_test!(test_caught_signal_respects_pending_thread_target);
+    passed &= run_test!(test_thread_kill_targets_live_sibling);
+    passed &= run_test!(test_thread_kill_resumes_interrupted_target);
+    passed &= run_test!(test_thread_kill_default_actions);
     passed &= run_test!(test_rendezvous_interrupts_sleeping_sibling);
     passed &= run_test!(test_sigaction_discards_pending_ignored_signals);
     passed &= run_test!(test_blocked_default_signals_stay_pending);

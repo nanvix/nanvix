@@ -65,6 +65,10 @@ Empty lists and unknown host names are errors. Only the Unix signal tests and th
 snapshot-save-exit test are Linux-only; HTTP and terminal tests have no host restrictions.
 
 The POSIX C suites use `test/test-posix.toml` and `test/test-posix-windows.toml`.
+The `posix/test-c-pthread-kill` suite checks null-signal probes, direct error returns without
+changing `errno`, self-delivery, and delivery only to the named thread. It also checks that
+duplicate blocked signals coalesce, are visible only in the target's pending set, and interrupt
+`sigsuspend()` when unblocked.
 The `posix/test-c-alarm` suite covers one-shot `SIGALRM` delivery, timer replacement and
 cancellation with rounded remaining time, sleep interruption, pending blocked signals, ignored
 signals (including discarding an already pending alarm), fatal default delivery after unblocking
