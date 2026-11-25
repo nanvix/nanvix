@@ -731,11 +731,12 @@ impl ProcessManager {
     ///
     /// - `pid`: Process identifier in which the thread is running.
     /// - `tid`: Thread identifier of the thread to join.
+    /// - `retval`: User address at which to store the thread's exit status.
     ///
     /// # Returns
     ///
-    /// Upon successful completion, the status of the thread is returned. Otherwise, an error code is
-    /// returned instead.
+    /// Upon success, the exit status is copied to `retval` and the thread is harvested. Otherwise,
+    /// an error is returned. A failed copy leaves the thread and its status available for a retry.
     ///
     /// # Safety
     ///
@@ -756,7 +757,8 @@ impl ProcessManager {
     pub unsafe fn join_thread(
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
-    ) -> Result<ExitStatus, SleepError> {
+        retval: VirtualAddress,
+    ) -> Result<(), SleepError> {
         trace!("pid={:?}, tid={:?}", pid, tid);
 
         // Reap any detached-thread zombies deferred from a previous context switch.
@@ -764,13 +766,12 @@ impl ProcessManager {
 
         loop {
             let result: Result<ZombieThread, Result<Condvar, Error>> =
-                Self::get_mut().try_join_thread(pid, tid);
+                Self::get_mut().try_join_thread(pid, tid, retval);
 
             match result {
                 Ok(zombie_thread) => {
-                    let status: ExitStatus = zombie_thread.status();
                     Self::harvest_zombie_thread(pid, zombie_thread);
-                    break Ok(status);
+                    break Ok(());
                 },
 
                 Err(Ok(join_cond)) => {

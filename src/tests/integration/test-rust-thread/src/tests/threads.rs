@@ -13,14 +13,21 @@ use ::core::sync::atomic::{
     Ordering,
 };
 use ::sys::{
-    error::Error,
+    error::{
+        Error,
+        ErrorCode,
+    },
     kcall::pm::{
         __kcall_create_thread,
         __kcall_gettid,
         __kcall_join_thread,
         getpid_uncached,
     },
-    pm::ThreadCreateArgs,
+    number::KcallNumber,
+    pm::{
+        ThreadCreateArgs,
+        ThreadIdentifier,
+    },
 };
 use ::syscall::safe::mem::stack::Stack;
 
@@ -46,6 +53,7 @@ static WORKER_TID: AtomicUsize = AtomicUsize::new(0);
 pub fn run() -> Result<(), Error> {
     test_identifiers()?;
     test_create_and_join()?;
+    test_join_after_copy_failure()?;
     Ok(())
 }
 
@@ -84,6 +92,43 @@ fn test_create_and_join() -> Result<(), Error> {
     let worker_tid: usize = WORKER_TID.load(Ordering::Acquire);
     assert_ne!(worker_tid, main_tid_raw, "worker should have a distinct identifier");
     Ok(())
+}
+
+fn test_join_after_copy_failure() -> Result<(), Error> {
+    let stack: Stack = Stack::new(USER_THREAD_STACK_SIZE)?;
+    let mut args: ThreadCreateArgs = ThreadCreateArgs {
+        user_fn: ThreadCreateArgs::NULL_USER_FN,
+        user_fn_arg0: raw_entry_address(join_worker),
+        user_fn_arg1: EXPECTED_EXIT_STATUS,
+        user_stack_base: stack.base(),
+        user_stack_size: stack.size(),
+        user_tda: None,
+    };
+    let tid: ThreadIdentifier = __kcall_create_thread(&mut args)?;
+
+    // Use the raw call so the null result pointer never becomes a Rust reference.
+    let result: i64 = ::sys::kcall2!(KcallNumber::JoinThread.into(), u32::try_from(tid)?, 0);
+    assert_eq!(
+        ErrorCode::try_from(result)?,
+        ErrorCode::BadAddress,
+        "join must reject a null result pointer"
+    );
+
+    let mut retval: usize = 0;
+    __kcall_join_thread(tid, &mut retval)?;
+    drop(stack);
+    assert_eq!(retval, EXPECTED_EXIT_STATUS, "failed copy consumed the worker exit status");
+    match __kcall_join_thread(tid, &mut retval) {
+        Err(error) => {
+            assert_eq!(error.code, ErrorCode::NoSuchProcess, "unexpected error after joining");
+        },
+        Ok(()) => panic!("a successful join must consume the zombie"),
+    }
+    Ok(())
+}
+
+extern "C" fn join_worker(status: usize) -> usize {
+    status
 }
 
 extern "C" fn worker_thread(arg: usize) -> usize {
