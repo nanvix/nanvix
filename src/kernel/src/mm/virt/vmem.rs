@@ -4,6 +4,9 @@
 // TODO: remove this.
 #![allow(clippy::type_complexity)]
 
+#[cfg(feature = "test")]
+pub(super) mod test;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -344,6 +347,7 @@ impl Vmem {
     /// # Returns
     ///
     /// Upon success, empty is returned. Upon failure, an error code is returned instead.
+    /// A failure leaves the page directory, existing page tables, and ownership lists unchanged.
     ///
     pub fn map_kpage(
         &mut self,
@@ -364,54 +368,55 @@ impl Vmem {
             },
         };
 
-        // Check if page table does not exist.
+        // Resolve the fallible part of reloading CR3 before changing any mapping.
+        let pgdir_addr: FrameAddress = self.pgdir.physical_address().inspect_err(|e| {
+            error!("map_kpage(): failed to resolve page directory address (error={e:?})");
+        })?;
+
+        let page_table: Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>> =
+            if !pde.is_present() {
+                Rc::new(RefCell::new((pt_vaddr, Self::allocate_kernel_page_table()?)))
+            } else {
+                self.kernel_page_tables
+                    .iter()
+                    .find(|entry| entry.borrow().0.into_raw_value() == pt_vaddr.into_raw_value())
+                    .cloned()
+                    .ok_or_else(|| {
+                        let reason: &str = "page table not found";
+                        error!("{reason}");
+                        Error::new(ErrorCode::NoSuchEntry, reason)
+                    })?
+            };
+
+        // A new table remains private until its first page has been mapped successfully.
+        // FIXME: do not be so open about permissions and caching.
+        page_table.borrow_mut().1.map(
+            PageAddress::new(vaddr),
+            kpage.frame_address(),
+            true,
+            true,
+            false,
+            AccessPermission::RDWR,
+        )?;
+
         if !pde.is_present() {
-            let page_table: PageTable<PageTableStorage> = Self::allocate_kernel_page_table()?;
-
+            let page_table_addr: FrameAddress =
+                page_table.borrow().1.physical_address().inspect_err(|e| {
+                    error!("map_kpage(): failed to resolve page table address (error={e:?})");
+                })?;
             // FIXME: do not be so open about permissions.
-            self.pgdir.map(
-                pt_vaddr,
-                page_table.physical_address()?,
-                false,
-                AccessPermission::RDWR,
-            )?;
-
-            //===================================================================
-            // NOTE: if we fail beyond this point we should unmap the page table.
-            //===================================================================
-
-            // Add page table to the list of kernel page tables.
-            self.kernel_page_tables
-                .push_back(Rc::new(RefCell::new((pt_vaddr, page_table))));
-        };
-
-        // Get corresponding page table.
-        for entry in self.kernel_page_tables.iter_mut() {
-            if entry.borrow().0.into_raw_value() == pt_vaddr.into_raw_value() {
-                // Map the page to the target virtual address space.
-                // FIXME: do not be so open about permissions and caching.
-                entry.borrow_mut().1.map(
-                    PageAddress::new(vaddr),
-                    kpage.frame_address(),
-                    true,
-                    true,
-                    false,
-                    AccessPermission::RDWR,
-                )?;
-
-                // Add the kernel page to the list of kernel pages.
-                self.kernel_pages.push_back(Rc::new(RefCell::new(kpage)));
-
-                // Reload page directory to force a TLB flush.
-                self.load()?;
-
-                return Ok(());
-            }
+            self.pgdir
+                .map(pt_vaddr, page_table_addr, false, AccessPermission::RDWR)?;
+            self.kernel_page_tables.push_back(page_table);
         }
 
-        let reason: &str = "page table not found";
-        error!("{reason}");
-        Err(Error::new(ErrorCode::NoSuchEntry, reason))
+        self.kernel_pages.push_back(Rc::new(RefCell::new(kpage)));
+
+        // SAFETY: the directory address was validated before mapping. Its storage remains alive,
+        // and every committed mapping is now backed by the ownership lists.
+        unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
+
+        Ok(())
     }
 
     ///
