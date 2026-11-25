@@ -612,7 +612,12 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             },
         };
 
-        // Check that the initrd region does not overlap the user mmap region.
+        let memory_end: usize = core::cmp::min(
+            ::config::memory_layout::USER_MMAP_BASE_RAW,
+            ::config::kernel::MEMORY_SIZE,
+        );
+
+        // Check that the initrd fits in physical memory and does not overlap the user mmap region.
         let initrd_end: usize = match initrd_base.checked_add(total_bytes) {
             Some(end) => end,
             None => {
@@ -621,13 +626,11 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             },
         };
-        if initrd_end > ::config::memory_layout::USER_MMAP_BASE_RAW {
-            let reason: &str = "initrd region overlaps user mmap region";
+        if initrd_end > memory_end {
+            let reason: &str = "initrd region exceeds memory bounds";
             error!(
-                "parse_bootinfo(): {} (initrd_end={:#010x}, mmap_base={:#010x})",
-                reason,
-                initrd_end,
-                ::config::memory_layout::USER_MMAP_BASE_RAW
+                "parse_bootinfo(): {} (initrd_end={:#010x}, memory_end={:#010x})",
+                reason, initrd_end, memory_end
             );
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
@@ -635,95 +638,42 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
             unsafe { core::slice::from_raw_parts(initrd_base as *const u8, total_bytes) };
 
         // Detect initrd format by checking for NVMB multibinary magic.
-        if image_data.len() >= multibin::MAGIC.len()
-            && image_data[..multibin::MAGIC.len()] == multibin::MAGIC
-        {
+        let is_multibinary: bool = image_data.len() >= multibin::MAGIC.len()
+            && image_data[..multibin::MAGIC.len()] == multibin::MAGIC;
+
+        // An NVMB image may fill the entire region without leaving room for an optional sidecar.
+        let (module_cmdline, cmdline_end): (&'static str, usize) =
+            if is_multibinary && initrd_end == memory_end {
+                ("", initrd_end)
+            } else {
+                read_initrd_cmdline(initrd_end, memory_end)?
+            };
+
+        if is_multibinary {
             info!("parse_bootinfo(): multibinary initrd detected");
-            let modules: Vec<KernelModule> = crate::multibin::parse(image_data, initrd_base)?;
+            let region_size: usize = if module_cmdline.is_empty() {
+                total_bytes
+            } else {
+                cmdline_end - initrd_base
+            };
+            let mut modules: Vec<KernelModule> =
+                crate::multibin::parse(image_data, initrd_base, region_size)?;
+            if !module_cmdline.is_empty() {
+                if let Some(module) = modules.last_mut() {
+                    module.set_cmdline_override(module_cmdline);
+                }
+            }
             kernel_modules.extend(modules);
         } else {
-            // Single ELF binary with length-prefixed args after the initrd.
             info!("parse_bootinfo(): single-binary initrd detected");
-            let initrd_cmdline_len_base: usize = initrd_base + total_bytes;
-            let initrd_cmdline_base: usize = initrd_cmdline_len_base + CmdlineArgsLen::WIRE_SIZE;
-
-            // Validate that the length field fits within the known initrd allocation.
-            let cmdline_len_end: usize =
-                match initrd_cmdline_len_base.checked_add(CmdlineArgsLen::WIRE_SIZE) {
-                    Some(end) => end,
-                    None => {
-                        let reason: &str = "cmdline length field address overflow";
-                        error!("parse_bootinfo(): {}", reason);
-                        return Err(Error::new(ErrorCode::InvalidArgument, reason));
-                    },
-                };
-            if cmdline_len_end > ::config::memory_layout::USER_MMAP_BASE_RAW {
-                let reason: &str = "cmdline length field exceeds memory bounds";
-                error!("parse_bootinfo(): {}", reason);
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
-            }
-
-            let cmdline_len: CmdlineArgsLen = unsafe {
-                match CmdlineArgsLen::from_le_bytes(
-                    *(initrd_cmdline_len_base as *const [u8; CmdlineArgsLen::WIRE_SIZE]),
-                ) {
-                    Some(v) => v,
-                    None => {
-                        let reason: &str = "cmdline length exceeds maximum";
-                        error!("parse_bootinfo(): {}", reason);
-                        return Err(Error::new(ErrorCode::InvalidArgument, reason));
-                    },
-                }
-            };
-
-            // Validate that the cmdline payload fits within memory bounds.
-            let cmdline_end: usize = match initrd_cmdline_base.checked_add(cmdline_len.as_usize()) {
-                Some(end) => end,
-                None => {
-                    let reason: &str = "cmdline payload address overflow";
-                    error!("parse_bootinfo(): {}", reason);
-                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
-                },
-            };
-            if cmdline_end > ::config::memory_layout::USER_MMAP_BASE_RAW {
-                let reason: &str = "cmdline payload exceeds memory bounds";
-                error!(
-                    "parse_bootinfo(): {} (cmdline_end={:#010x}, mmap_base={:#010x})",
-                    reason,
-                    cmdline_end,
-                    ::config::memory_layout::USER_MMAP_BASE_RAW
-                );
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
-            }
-
-            // SAFETY: the cmdline bytes reside in bootloader-provided memory that persists for the
-            // kernel's lifetime.
-            let cmdline_bytes: &'static [u8] = unsafe {
-                core::slice::from_raw_parts(
-                    initrd_cmdline_base as *const u8,
-                    cmdline_len.as_usize(),
-                )
-            };
-
-            // Validate UTF-8.
-            let module_cmdline: &'static str = match core::str::from_utf8(cmdline_bytes) {
-                Ok(s) => s,
-                Err(_) => {
-                    let reason: &str = "invalid UTF-8 in command line";
-                    error!("parse_bootinfo(): {}", reason);
-                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
-                },
-            };
-
             info!(
-                "initrd_base={:#010x}, initrd_size={:#010x}, cmdline_len={:?}, cmdline={:?}",
-                initrd_base, total_bytes, cmdline_len, module_cmdline
+                "initrd_base={:#010x}, initrd_size={:#010x}, cmdline={:?}",
+                initrd_base, total_bytes, module_cmdline
             );
 
             // Module size must cover the ELF binary AND the trailing cmdline area
             // (length field + payload) so that the HAL maps the entire region.
-            let module_size: usize =
-                total_bytes + CmdlineArgsLen::WIRE_SIZE + cmdline_len.as_usize();
+            let module_size: usize = cmdline_end - initrd_base;
 
             let module: KernelModule = KernelModule::new(
                 PhysicalAddress::from_raw_value(initrd_base)?,
@@ -743,6 +693,53 @@ pub fn parse_bootinfo(magic: u32, info: usize) -> Result<BootInfo, Error> {
         kernel_modules,
         kernel_args,
     ))
+}
+
+/// Reads the shared single-binary/NVMB length-prefixed command line from boot memory.
+fn read_initrd_cmdline(
+    initrd_end: usize,
+    memory_end: usize,
+) -> Result<(&'static str, usize), Error> {
+    let cmdline_base: usize = match initrd_end.checked_add(CmdlineArgsLen::WIRE_SIZE) {
+        Some(end) if end <= memory_end => end,
+        _ => {
+            let reason: &str = "cmdline length field exceeds memory bounds";
+            error!("read_initrd_cmdline(): {}", reason);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        },
+    };
+
+    // SAFETY: the length field lies in the bootloader-provided, identity-mapped physical memory.
+    let cmdline_len: CmdlineArgsLen = unsafe {
+        match CmdlineArgsLen::from_le_bytes(*(initrd_end as *const [u8; CmdlineArgsLen::WIRE_SIZE]))
+        {
+            Some(len) => len,
+            None => {
+                let reason: &str = "cmdline length exceeds maximum";
+                error!("read_initrd_cmdline(): {}", reason);
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        }
+    };
+
+    let cmdline_end: usize = match cmdline_base.checked_add(cmdline_len.as_usize()) {
+        Some(end) if end <= memory_end => end,
+        _ => {
+            let reason: &str = "cmdline payload exceeds memory bounds";
+            error!("read_initrd_cmdline(): {}", reason);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        },
+    };
+
+    // SAFETY: the checked payload is in boot memory retained by the module's mapped region.
+    let cmdline_bytes: &'static [u8] =
+        unsafe { core::slice::from_raw_parts(cmdline_base as *const u8, cmdline_len.as_usize()) };
+    let cmdline: &'static str = core::str::from_utf8(cmdline_bytes).map_err(|_| {
+        let reason: &str = "invalid UTF-8 in command line";
+        error!("read_initrd_cmdline(): {}", reason);
+        Error::new(ErrorCode::InvalidArgument, reason)
+    })?;
+    Ok((cmdline, cmdline_end))
 }
 
 ///

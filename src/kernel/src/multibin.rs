@@ -34,12 +34,17 @@ use ::sys::{
 ///
 /// - `image_data`: Raw bytes of the multibinary image.
 /// - `initrd_base`: Physical base address where the image is loaded in guest memory.
+/// - `region_size`: Size of the mapped image region, including any trailing argument sidecar.
 ///
 /// # Returns
 ///
 /// A list of modules on success, or an [`Error`] if the image is malformed.
 ///
-pub fn parse(image_data: &'static [u8], initrd_base: usize) -> Result<Vec<KernelModule>, Error> {
+pub fn parse(
+    image_data: &'static [u8],
+    initrd_base: usize,
+    region_size: usize,
+) -> Result<Vec<KernelModule>, Error> {
     let parsed: multibin::ParseResult = multibin::parse(image_data).map_err(|e| {
         error!("parse(): failed to parse multibinary image: {:?}", e);
         e
@@ -80,13 +85,14 @@ pub fn parse(image_data: &'static [u8], initrd_base: usize) -> Result<Vec<Kernel
         );
 
         // Each module's mapped region covers the entire multibinary image so that
-        // the header pages (containing cmdline strings) remain accessible after
-        // the kernel switches to the new page table.
+        // the header pages and any argument sidecar remain accessible after the
+        // kernel switches to the new page table. All modules need the same extent
+        // because region registration and reclamation deduplicate by base address.
         let module: KernelModule = KernelModule::new_with_region(
             PhysicalAddress::from_raw_value(entry_phys_addr)?,
             entry.size,
             PhysicalAddress::from_raw_value(initrd_base)?,
-            image_data.len(),
+            region_size,
             cmdline,
         );
         modules.push(module);

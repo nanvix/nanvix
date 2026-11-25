@@ -647,6 +647,91 @@ expected_output = "SPECIAL=a/b:c-d_e.f\nok"
 # Combined Command-Line Argument and Environment Variable Tests
 #===================================================================================================
 
+# NVMB runtime overrides replace only the application cmdline, leaving the daemon entries intact.
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "initrd-args/max-length"
+program = "./bin/test-rust-cmdline-len.initrd"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 28 (filename) - 1 (space separator) = 4063.
+program_args_padding_len = 4063
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+name = "initrd-args/max-length"
+program = "./bin/test-rust-cmdline-len.initrd"
+program_args_padding_len = 4063
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "initrd-args/baked"
+program = "./bin/test-initrd-args.initrd"
+expected_output = "ARGS:baked arguments\nENV:BAKED=old\nok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+name = "initrd-args/baked"
+program = "./bin/test-initrd-args.initrd"
+expected_output = "ARGS:baked arguments\nENV:BAKED=old\nok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "initrd-args/short"
+program = "./bin/test-initrd-args.initrd"
+program_args = "x"
+expected_output = "ARGS:x\nENV:\nok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+name = "initrd-args/short"
+program = "./bin/test-initrd-args.initrd"
+program_args = "x"
+expected_output = "ARGS:x\nENV:\nok"
+
+# A RAMFS selects the Windows file-backed initrd path; the sidecar must survive its remap.
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "initrd-args/file-backed"
+program = "./bin/test-initrd-args.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+program_args = "a much longer replacement argument list"
+program_env = "NEW=runtime"
+expected_output = "ARGS:a much longer replacement argument list\nENV:NEW=runtime\nok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+name = "initrd-args/file-backed"
+program = "./bin/test-initrd-args.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+program_args = "a much longer replacement argument list"
+program_env = "NEW=runtime"
+expected_output = "ARGS:a much longer replacement argument list\nENV:NEW=runtime\nok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "initrd-args/env-only"
+program = "./bin/test-initrd-args.initrd"
+program_env = "NEW=runtime"
+expected_output = "ARGS:\nENV:NEW=runtime\nok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+name = "initrd-args/env-only"
+program = "./bin/test-initrd-args.initrd"
+program_env = "NEW=runtime"
+expected_output = "ARGS:\nENV:NEW=runtime\nok"
+
 # Program with args and environment variables.
 [[tests]]
 build_modes = ["debug", "release"]

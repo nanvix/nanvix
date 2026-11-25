@@ -500,12 +500,29 @@ Optional flags:
 | Flag                  | Description                                                      |
 | --------------------- | ---------------------------------------------------------------- |
 | `-stderr <file>`      | Redirect guest stderr to a file instead of host stderr.          |
-| `-initrd_args <args>` | Arguments forwarded to the initrd payload.                       |
+| `-initrd-args <args>` | Arguments forwarded to the initrd payload (see below).           |
 | `-kernel-args <args>` | Kernel arguments written to guest control registers (see below). |
 | `-ramfs <file>`       | Path to a RAM filesystem image exposed to the guest.             |
 | `-user-vm-id <id>`    | VM identifier (defaults to `0`).                                 |
 | `-log-to-file`        | Write logs to files instead of stdout.                           |
 | `-log-dir <dir>`      | Directory for log files (used with `-log-to-file`).              |
+
+### Initrd Arguments
+
+`-initrd-args "args;ENV=value"` supplies application arguments and environment variables.
+The legacy spelling `-initrd_args` remains an alias. A literal semicolon is escaped as `\;`.
+The initrd filename is prepended as `argv[0]`, as for single-binary ELF images.
+
+For multibinary (NVMB) images, an explicit value replaces the **last entry's** baked arguments
+and environment; earlier entries (normally daemons) are unchanged. Omitting the flag retains all
+baked command lines. An explicit empty value clears the application's baked arguments and
+environment, leaving only `argv[0]`.
+
+The VMM writes a `[u16 LE length][UTF-8 command line]` sidecar after the page-rounded image without
+patching or rebuilding the image. The kernel keeps the sidecar mapped until the application is
+spawned. A zero length means no override. The complete command line, including the prepended
+filename, must fit in 4092 bytes; malformed lengths, out-of-bounds payloads, and invalid UTF-8
+are rejected.
 
 ### Recognised Kernel Arguments
 

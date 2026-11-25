@@ -41,6 +41,25 @@ fn parse_rejects_missing_kernel() {
     assert!(result.is_err());
 }
 
+#[test]
+fn parse_accepts_both_initrd_argument_spellings() {
+    for option in ["-initrd-args", "-initrd_args"] {
+        let mut raw_args: Vec<String> = base_args();
+        raw_args.extend([option.to_string(), "hello world;FOO=bar".to_string()]);
+        let mut args: Args = Args::parse(raw_args).expect("initrd arguments should parse");
+        assert_eq!(args.initrd_args().as_deref(), Some("hello world;FOO=bar"));
+    }
+}
+
+#[test]
+fn parse_rejects_missing_initrd_arguments() {
+    for option in ["-initrd-args", "-initrd_args"] {
+        let mut raw_args: Vec<String> = base_args();
+        raw_args.push(option.to_string());
+        assert!(Args::parse(raw_args).is_err(), "{option} must require a value");
+    }
+}
+
 #[cfg(feature = "gdb")]
 #[test]
 fn parse_accepts_gdb_port() {
