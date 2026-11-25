@@ -678,10 +678,13 @@ impl RunningProcess {
         }
     }
 
+    /// Copies the exit status to `retval` before removing a joinable zombie. If the copy fails,
+    /// the zombie remains queued. A live target returns its condition variable for the caller to wait.
     #[allow(clippy::type_complexity)]
     pub fn try_join_thread(
         &mut self,
         tid: ThreadIdentifier,
+        retval: VirtualAddress,
     ) -> Result<ZombieThread, Result<Condvar, Error>> {
         // Check if the thread is the running thread.
         if self.running.id() == tid {
@@ -692,10 +695,21 @@ impl RunningProcess {
         // Search for thread in zombie threads.
         if let Some(zombie_threads) = &self.zombie {
             for zombie_thread in zombie_threads.iter() {
-                if zombie_thread.id() == tid && zombie_thread.is_detached() {
-                    let reason: &str = "cannot join a detached thread";
-                    error!("{reason} (tid={tid:?})");
-                    return Err(Err(Error::new(ErrorCode::InvalidArgument, reason)));
+                if zombie_thread.id() == tid {
+                    if zombie_thread.is_detached() {
+                        let reason: &str = "cannot join a detached thread";
+                        error!("{reason} (tid={tid:?})");
+                        return Err(Err(Error::new(ErrorCode::InvalidArgument, reason)));
+                    }
+                    let status: ExitStatus = zombie_thread.status();
+                    self.state
+                        .copy_to_user_unaligned(
+                            retval,
+                            VirtualAddress::from_raw_value(&status as *const ExitStatus as usize),
+                            core::mem::size_of::<ExitStatus>(),
+                        )
+                        .map_err(Err)?;
+                    break;
                 }
             }
         }

@@ -6,11 +6,11 @@
 //==================================================================================================
 
 use crate::pm::{
-    self,
     ProcessManager,
     SleepError,
 };
 use ::sys::{
+    mm::VirtualAddress,
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
@@ -35,8 +35,8 @@ use ::sys::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, the status of the thread is returned. Otherwise, an error code is
-/// returned instead.
+/// Upon successful completion, the thread's status is stored at `arg1` and success is returned.
+/// Otherwise, an error is returned. A failed status copy leaves the thread available for joining.
 ///
 /// # Safety
 ///
@@ -67,12 +67,9 @@ pub unsafe fn join_thread(
             return Err(SleepError::Generic(error));
         },
     };
-    let retval: *mut ExitStatus = arg1 as *mut ExitStatus;
+    let retval: VirtualAddress = VirtualAddress::from_raw_value(arg1 as usize);
 
-    let status: ExitStatus = ProcessManager::join_thread(pid, tid)?;
-
-    pm::copy_to_user::<ExitStatus>(ProcessManager::get_mut(), pid, retval, &status)
-        .map_err(SleepError::Generic)?;
+    ProcessManager::join_thread(pid, tid, retval)?;
 
     Ok(ExitStatus::ok())
 }
