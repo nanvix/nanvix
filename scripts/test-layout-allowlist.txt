@@ -17,7 +17,7 @@ R3 src/kernel/src/kmain.rs code kmain::if !crate::event::test_delivery_integrati
 R3 src/kernel/src/kmain.rs code kmain::test::test();
 R3 src/kernel/src/kmain.rs code kmain::test::test_kernel_args(kernel_args);
 R3 src/kernel/src/mm/kernel_vas.rs code init::phys::test();
-R3 src/kernel/src/mm/kernel_vas.rs code init::virt::test();
+R3 src/kernel/src/mm/kernel_vas.rs code init::virt::test(&vmem);
 R3 src/kernel/src/pm/mod.rs code init::{ let passed: bool = test::test(); assert!(passe
 
 # Kernel fault injection: the process manager fails the next lifecycle creation on demand so that
