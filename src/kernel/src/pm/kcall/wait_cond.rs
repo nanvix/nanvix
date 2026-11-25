@@ -149,6 +149,14 @@ pub unsafe fn wait_cond(
                 return result
                     .and(ProcessManager::put_mutex(mutex_addr).map_err(SleepError::Generic));
             },
+            Err(SleepError::Interrupted(InterruptReason::Signaled)) => {
+                // Replaying the whole wait under SA_RESTART would discard an already-consumed
+                // notification. The pending signal is still delivered at the return-to-user boundary.
+                let error: Error =
+                    Error::new(ErrorCode::Interrupted, "mutex reacquisition interrupted");
+                warn!("wait_cond(): retrying mutex reacquisition (error={error:?})");
+                result = result.and(Err(SleepError::Generic(error)));
+            },
             Err(error) => {
                 warn!("wait_cond(): retrying mutex reacquisition (error={error:?})");
                 result = result.and(Err(error));

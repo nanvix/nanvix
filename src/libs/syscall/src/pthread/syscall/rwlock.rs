@@ -246,7 +246,7 @@ pub fn pthread_rwlock_destroy(rwlock: &mut pthread_rwlock_t) -> Result<(), Error
 ///
 /// # Description
 ///
-/// Acquires a read lock on a read-write lock.
+/// Acquires a read lock on a read-write lock. Interrupted condition waits are retried.
 ///
 /// # Parameters
 ///
@@ -288,14 +288,21 @@ pub fn pthread_rwlock_rdlock(rwlock: &mut pthread_rwlock_t) -> Result<(), Error>
             __kcall_unlock_mutex(mutex_addr)?;
             break Ok(());
         }
-        __kcall_wait_cond(readers_cond_addr, mutex_addr, None)?;
+        if let Err(error) = __kcall_wait_cond(readers_cond_addr, mutex_addr, None) {
+            if error.code == ErrorCode::Interrupted {
+                continue;
+            }
+            ::syslog::warn!("pthread_rwlock_rdlock(): condition wait failed (error={error:?})");
+            __kcall_unlock_mutex(mutex_addr)?;
+            return Err(error);
+        }
     }
 }
 
 ///
 /// # Description
 ///
-/// Acquires a write lock on a read-write lock.
+/// Acquires a write lock on a read-write lock. Interrupted condition waits are retried.
 ///
 /// # Parameters
 ///
@@ -340,7 +347,32 @@ pub fn pthread_rwlock_wrlock(rwlock: &mut pthread_rwlock_t) -> Result<(), Error>
             __kcall_unlock_mutex(mutex_addr)?;
             break Ok(());
         }
-        __kcall_wait_cond(writers_cond_addr, mutex_addr, None)?;
+        if let Err(error) = __kcall_wait_cond(writers_cond_addr, mutex_addr, None) {
+            if error.code == ErrorCode::Interrupted {
+                continue;
+            }
+            ::syslog::warn!("pthread_rwlock_wrlock(): condition wait failed (error={error:?})");
+            let (readers_cond_addr, wake_readers, wake_writer): (ConditionAddress, bool, bool) = {
+                let mut runtime: MutexGuard<'_, ReadWriteLockState> = runtime_rwlock.lock();
+                runtime.writers_waiting -= 1;
+                (
+                    ConditionAddress::from(runtime.readers_cond as usize),
+                    !runtime.writer_active && runtime.writers_waiting == 0,
+                    !runtime.writer_active && runtime.readers == 0 && runtime.writers_waiting > 0,
+                )
+            };
+            // Removing the last queued writer can make blocked readers eligible.
+            let wake_result: Result<(), Error> = if wake_writer {
+                __kcall_signal_cond(writers_cond_addr, false).map(|_| ())
+            } else if wake_readers {
+                __kcall_signal_cond(readers_cond_addr, true).map(|_| ())
+            } else {
+                Ok(())
+            };
+            let unlock_result: Result<(), Error> = __kcall_unlock_mutex(mutex_addr);
+            wake_result.and(unlock_result)?;
+            return Err(error);
+        }
     }
 }
 
