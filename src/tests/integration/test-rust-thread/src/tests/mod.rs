@@ -9,6 +9,7 @@ use ::sys::error::Error;
 
 mod alarm_starvation;
 mod attributes;
+mod cond_reacquire;
 mod cond_timedwait;
 mod condvars;
 mod identity;
@@ -37,6 +38,7 @@ pub fn run_all() -> Result<(), Error> {
     once::run()?;
     condvars::run()?;
     cond_timedwait::run()?;
+    cond_reacquire::run()?;
     rwlocks::run()?;
     thread_local::run()?;
     timers::run()?;
