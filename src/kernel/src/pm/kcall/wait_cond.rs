@@ -10,6 +10,7 @@ use crate::pm::{
         Mutex,
         MutexGuard,
     },
+    InterruptReason,
     ProcessManager,
     SleepError,
 };
@@ -34,7 +35,9 @@ use ::sys::{
 ///
 /// # Description
 ///
-/// Waits on a condition variable.
+/// Waits on a condition variable. After releasing the mutex, restores ownership before returning
+/// to the caller, including on timeout, interruption, or condition-variable allocation failure.
+/// Process termination aborts the wait without waiting for a potentially terminated mutex owner.
 ///
 /// # Parameters
 ///
@@ -105,30 +108,61 @@ pub unsafe fn wait_cond(
         }
     };
 
-    {
+    let guard: MutexGuard =
         ProcessManager::take_mutex_guard(pid, tid, mutex_addr).map_err(SleepError::Generic)?;
-        // The mutex guard is dropped, causing threads to be notified.
+    // Pin the existing map entry before unlocking so reacquisition cannot allocate or change mutexes.
+    let mutex: Mutex = match ProcessManager::get_mutex(mutex_addr) {
+        Ok(mutex) => mutex,
+        Err(error) => {
+            ProcessManager::put_mutex_guard(mutex_addr, guard).map_err(SleepError::Generic)?;
+            return Err(SleepError::Generic(error));
+        },
+    };
+    drop(guard);
+
+    let mut result: Result<(), SleepError> = match ProcessManager::get_cond(cond_addr) {
+        Ok(cond) => {
+            let result: Result<(), SleepError> = cond.wait(alarm);
+            drop(cond);
+            result.and(ProcessManager::put_cond(cond_addr).map_err(SleepError::Generic))
+        },
+        Err(error) => {
+            error!(
+                "wait_cond(): failed to get condition variable (pid={:?}, tid={:?}, \
+                 cond_addr={:x?}, mutex_addr={:x?}, error={:?})",
+                pid, tid, cond_addr, mutex_addr, error
+            );
+            Err(SleepError::Generic(error))
+        },
+    };
+
+    if matches!(result, Err(SleepError::Interrupted(InterruptReason::Killed))) {
+        return result.and(ProcessManager::put_mutex(mutex_addr).map_err(SleepError::Generic));
     }
 
-    let result: Result<(), SleepError> = {
-        match ProcessManager::get_cond(cond_addr) {
-            Ok(cond) => cond.wait(alarm),
+    // Defer nonfatal errors until ownership is restored; do not reuse the condition wait's deadline.
+    let guard: MutexGuard = loop {
+        match mutex.lock(None) {
+            Ok(guard) => break guard,
+            Err(error @ SleepError::Interrupted(InterruptReason::Killed)) => {
+                result = Err(error);
+                return result
+                    .and(ProcessManager::put_mutex(mutex_addr).map_err(SleepError::Generic));
+            },
+            Err(SleepError::Interrupted(InterruptReason::Signaled)) => {
+                // Replaying the whole wait under SA_RESTART would discard an already-consumed
+                // notification. The pending signal is still delivered at the return-to-user boundary.
+                let error: Error =
+                    Error::new(ErrorCode::Interrupted, "mutex reacquisition interrupted");
+                warn!("wait_cond(): retrying mutex reacquisition (error={error:?})");
+                result = result.and(Err(SleepError::Generic(error)));
+            },
             Err(error) => {
-                error!(
-                    "wait_cond(): failed to get condition variable (pid={:?}, tid={:?}, \
-                     cond_addr={:x?}, mutex_addr={:x?}, error={:?})",
-                    pid, tid, cond_addr, mutex_addr, error
-                );
-                Err(SleepError::Generic(error))
+                warn!("wait_cond(): retrying mutex reacquisition (error={error:?})");
+                result = result.and(Err(error));
             },
         }
-        // The condition variable is dropped, causing its reference count to decrease.
     };
-    ProcessManager::put_cond(cond_addr).map_err(SleepError::Generic)?;
-
-    // Reacquire the mutex.
-    let mutex: Mutex = ProcessManager::get_mutex(mutex_addr).map_err(SleepError::Generic)?;
-    let guard: MutexGuard = mutex.lock(None)?;
     ProcessManager::put_mutex_guard(mutex_addr, guard).map_err(SleepError::Generic)?;
 
     result

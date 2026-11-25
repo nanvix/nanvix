@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::pm::ProcessManager;
+use crate::pm::{
+    sync::mutex::MutexGuard,
+    ProcessManager,
+};
 use ::sys::{
     error::Error,
     pm::{
@@ -53,8 +56,8 @@ pub unsafe fn unlock_mutex(
     // Unpack kernel call arguments.
     let mutex_addr: MutexAddress = MutexAddress::from(mutex_addr);
 
-    ProcessManager::take_mutex_guard(pid, tid, mutex_addr)?;
-    // The mutex guard is dropped, causing threads to be notified.
-
-    Ok(())
+    let guard: MutexGuard = ProcessManager::take_mutex_guard(pid, tid, mutex_addr)?;
+    let result: Result<(), Error> = ProcessManager::put_mutex(mutex_addr);
+    drop(guard);
+    result
 }

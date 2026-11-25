@@ -1070,6 +1070,9 @@ pub fn __kcall_signal_cond(cond_addr: ConditionAddress, broadcast: bool) -> Resu
 ///
 /// Waits on a condition variable. The calling thread atomically releases the associated mutex and
 /// blocks until the condition variable is signaled or the optional timeout expires.
+/// Once released, the mutex is reacquired before returning, including on failure. Interruptions
+/// during reacquisition do not let the call return without ownership; the first error is preserved.
+/// An interruption during reacquisition does not restart an already-notified wait under `SA_RESTART`.
 ///
 /// # Parameters
 ///

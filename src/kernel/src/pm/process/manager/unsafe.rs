@@ -1002,6 +1002,31 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Releases the calling thread's reference to a mutex-map entry.
+    ///
+    /// # Parameters
+    ///
+    /// - `mutex_addr`: Address of the mutex.
+    ///
+    /// # Returns
+    ///
+    /// Empty on success, or an error if the mutex-map entry does not exist.
+    ///
+    /// # Safety
+    ///
+    /// The caller must hold exactly one reference to the mutex (a mutex or its guard), drop it
+    /// after this call, and hold no reference to the process manager.
+    ///
+    pub unsafe fn put_mutex(mutex_addr: MutexAddress) -> Result<(), Error> {
+        Self::get_mut()
+            .get_running_mut()
+            .state_mut()
+            .put_mutex(mutex_addr)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Stores a mutex guard in the calling thread.
     ///
     /// # Parameters
@@ -1287,7 +1312,8 @@ impl ProcessManager {
     /// # Returns
     ///
     /// Upon successful completion, the mutex guard is returned. Otherwise, an error is returned
-    /// instead.
+    /// instead. The mutex-map entry is retained: the caller must either restore ownership or call
+    /// [`Self::put_mutex()`] before dropping its last reference to the mutex.
     ///
     /// # Safety
     ///

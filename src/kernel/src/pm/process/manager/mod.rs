@@ -3241,8 +3241,6 @@ impl ProcessManager {
             },
         };
 
-        self.get_running_mut().state_mut().put_mutex(mutex_addr)?;
-
         Ok(mutex_guard)
     }
 
