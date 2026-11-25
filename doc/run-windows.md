@@ -358,6 +358,7 @@ Optional flags:
 `-initrd-args "args;ENV=value"` supplies application arguments and environment variables.
 The legacy spelling `-initrd_args` remains an alias. A literal semicolon is escaped as `\;`.
 The initrd filename is prepended as `argv[0]`, as for single-binary ELF images.
+Semicolons in the filename are escaped automatically before packing the command line.
 
 For multibinary (NVMB) images, an explicit value replaces the **last entry's** baked arguments
 and environment; earlier entries (normally daemons) are unchanged. Omitting the flag retains all

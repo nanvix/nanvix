@@ -427,7 +427,7 @@ impl Guest {
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or(initrd_filename)
-            .to_string();
+            .replace(';', r"\;");
         if let Some(args) = initrd_args {
             cmdline.push(' ');
             cmdline.push_str(args);

@@ -34,3 +34,13 @@ fn single_binary_cmdline_keeps_filename_without_arguments() {
         Some("app.elf".to_string())
     );
 }
+
+#[test]
+fn initrd_cmdline_escapes_semicolons_in_basename() {
+    for is_multibinary in [false, true] {
+        assert_eq!(
+            Guest::initrd_cmdline("app;release.initrd", is_multibinary, Some("x;NEW=value")),
+            Some(r"app\;release.initrd x;NEW=value".to_string())
+        );
+    }
+}
