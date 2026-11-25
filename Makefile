@@ -951,6 +951,22 @@ STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_PROCD_ONLY_TESTS) $(STANDA
 STANDALONE_WITH_VFS_INITRDS := $(STANDALONE_TEST_BINARIES:%=$(BINARIES_DIR)/%.initrd)
 STANDALONE_PROCD_ONLY_INITRDS := $(STANDALONE_PROCD_ONLY_TESTS:%=$(BINARIES_DIR)/%.initrd)
 
+# Reuse the argument-reporting guest with baked arguments to test runtime replacement.
+INITRD_ARGS_TEST_IMAGE := $(BINARIES_DIR)/test-initrd-args.initrd
+
+$(INITRD_ARGS_TEST_IMAGE): \
+		$(BINARIES_DIR)/test-rust-cmdline-env-nostd.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT) \
+		$(MKIMAGE) \
+		$(BINARIES_DIR)/.last-build-config
+	$(MKIMAGE) -o $@ \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
+		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
+		"$(BINARIES_DIR)/test-rust-cmdline-env-nostd.$(EXEC_FORMAT);app baked arguments;BAKED=old"
+
 # Build configuration guard.
 #
 # Staging preserves timestamps, so returning to an older Cargo configuration can leave newer
@@ -1022,12 +1038,13 @@ $(STANDALONE_PROCD_ONLY_INITRDS): $(BINARIES_DIR)/%.initrd: \
 
 # Build standalone multibinary images for all test/benchmark/application binaries. Uses .initrd
 # extension to avoid collisions with other build artifacts (e.g., vfs-test.img).
-standalone-images: $(STANDALONE_WITH_VFS_INITRDS) $(STANDALONE_PROCD_ONLY_INITRDS)
+standalone-images: $(STANDALONE_WITH_VFS_INITRDS) $(STANDALONE_PROCD_ONLY_INITRDS) $(INITRD_ARGS_TEST_IMAGE)
 	@echo "Standalone images built successfully."
 
 standalone-images-clean:
 	$(foreach bin,$(STANDALONE_TEST_BINARIES),$(RM_CMD) $(BINARIES_DIR)/$(bin).initrd ;)
 	$(foreach bin,$(STANDALONE_PROCD_ONLY_TESTS),$(RM_CMD) $(BINARIES_DIR)/$(bin).initrd ;)
+	$(RM_CMD) $(INITRD_ARGS_TEST_IMAGE)
 
 #===================================================================================================
 # Build Rules for Running Tests

@@ -4,6 +4,9 @@
 // Guest uses pointer-to-usize casts for address arithmetic.
 #![allow(clippy::cast_possible_truncation)]
 
+#[cfg(test)]
+mod tests;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -79,7 +82,7 @@ pub struct PreparedInitrd {
     pub base: usize,
     /// Page-rounded size of the initrd in guest memory.
     pub size_rounded: usize,
-    /// Command-line arguments to write after the remap, or `None` for multibinary images.
+    /// Command line to write after the remap, or `None` to retain baked multibinary arguments.
     pub args: Option<String>,
 }
 
@@ -246,22 +249,9 @@ impl Guest {
 
         self.initrd = Some((::config::microvm::DEFAULT_INITRD_BASE, initrd_size));
 
-        if is_multibinary {
-            // Multibinary image: cmdlines are embedded in the image, no write_args needed.
-            debug!("load_initrd(): multibinary format detected, skipping write_args");
-        } else {
-            // Single ELF binary: write length-prefixed args after the initrd.
-            let mut args: String = ::std::path::Path::new(initrd_filename)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(initrd_filename)
-                .to_string();
-
-            // Add initrd arguments if provided.
-            if let Some(ref initrd_args) = initrd_args {
-                args.push_str(&format!(" {initrd_args}"));
-            }
-
+        if let Some(args) =
+            Self::initrd_cmdline(initrd_filename, is_multibinary, initrd_args.as_deref())?
+        {
             debug!("load_initrd(): writing args to virtual memory: {}", args);
             self.write_args(vmem, &args)?;
         }
@@ -403,21 +393,8 @@ impl Guest {
         self.initrd = Some((::config::microvm::DEFAULT_INITRD_BASE, size_rounded));
         self.initrd_file_backed = true;
 
-        // Build args string (same logic as load_initrd).
-        let args: Option<String> = if is_multibinary {
-            debug!("prepare_initrd(): multibinary format detected, skipping args");
-            None
-        } else {
-            let mut args_str: String = ::std::path::Path::new(initrd_filename)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(initrd_filename)
-                .to_string();
-            if let Some(ref initrd_args) = initrd_args {
-                args_str.push_str(&format!(" {initrd_args}"));
-            }
-            Some(args_str)
-        };
+        let args: Option<String> =
+            Self::initrd_cmdline(initrd_filename, is_multibinary, initrd_args.as_deref())?;
 
         debug!(
             "prepare_initrd(): prepared (base={:#x}, file_size={}, size_rounded={}, \
@@ -434,6 +411,33 @@ impl Guest {
             size_rounded,
             args,
         })
+    }
+
+    /// Builds the sidecar command line, retaining baked NVMB arguments when no override is given.
+    fn initrd_cmdline(
+        initrd_filename: &str,
+        is_multibinary: bool,
+        initrd_args: Option<&str>,
+    ) -> Result<Option<String>> {
+        if is_multibinary && initrd_args.is_none() {
+            return Ok(None);
+        }
+
+        let basename: &str = ::std::path::Path::new(initrd_filename)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(initrd_filename);
+        if basename.contains(' ') {
+            let reason: &str = "initrd basename cannot contain spaces in the boot command line";
+            error!("initrd_cmdline(): {reason} (filename={initrd_filename})");
+            anyhow::bail!(reason);
+        }
+        let mut cmdline: String = basename.replace(';', r"\;");
+        if let Some(args) = initrd_args {
+            cmdline.push(' ');
+            cmdline.push_str(args);
+        }
+        Ok(Some(cmdline))
     }
 
     ///
@@ -532,7 +536,8 @@ impl Guest {
 
     /// # Description
     ///
-    /// Writes command line arguments into the virtual memory, right after the initrd file.
+    /// Writes a length-prefixed command line after the page-rounded initrd region.
+    /// For NVMB images this sidecar replaces only the last entry's baked command line.
     ///
     /// # Parameters
     ///

@@ -66,7 +66,9 @@ impl Args {
     /// Command-line option for the standard error output file.
     pub const OPT_STDERR: &'static str = "-stderr";
     /// Command-line option for initrd arguments.
-    pub const OPT_INITRD_ARGS: &'static str = "-initrd_args";
+    pub const OPT_INITRD_ARGS: &'static str = "-initrd-args";
+    /// Legacy command-line alias for initrd arguments.
+    const OPT_INITRD_ARGS_LEGACY: &'static str = "-initrd_args";
     /// Command-line option for kernel arguments.
     pub const OPT_KERNEL_ARGS: &'static str = "-kernel-args";
     /// Command-line option for the RAM filesystem file.
@@ -136,7 +138,7 @@ impl Args {
                     initrd_filename = Some(args[index + 1].clone());
                     index += 1;
                 },
-                Self::OPT_INITRD_ARGS if index + 1 < args.len() => {
+                Self::OPT_INITRD_ARGS | Self::OPT_INITRD_ARGS_LEGACY if index + 1 < args.len() => {
                     initrd_args = Some(args[index + 1].clone());
                     index += 1;
                 },

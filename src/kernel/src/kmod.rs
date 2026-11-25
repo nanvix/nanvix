@@ -86,14 +86,20 @@ impl KernelModule {
         self.region_size
     }
 
+    /// Replaces the command line with validated bytes in the module's mapped boot memory region.
+    pub fn set_cmdline_override(&mut self, cmdline: &'static str) {
+        self.cmdline_ptr = cmdline.as_ptr();
+        self.cmdline_len = cmdline.len();
+    }
+
     /// Gets the command line of the module.
     ///
     /// # Safety (internal)
     ///
     /// Uses `from_utf8_unchecked` because `cmdline_ptr`/`cmdline_len` originate from a
-    /// `&'static str` supplied at construction time, guaranteeing valid UTF-8.
+    /// `&'static str` supplied at construction or override time, guaranteeing valid UTF-8.
     pub fn cmdline(&self) -> &str {
-        // SAFETY: the raw parts were extracted from a `&'static str` in the constructor.
+        // SAFETY: the raw parts were extracted from a validated `&'static str`.
         unsafe {
             core::str::from_utf8_unchecked(core::slice::from_raw_parts(
                 self.cmdline_ptr,
