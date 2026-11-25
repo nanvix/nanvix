@@ -513,6 +513,8 @@ Optional flags:
 The legacy spelling `-initrd_args` remains an alias. A literal semicolon is escaped as `\;`.
 The initrd filename is prepended as `argv[0]`, as for single-binary ELF images.
 Semicolons in the filename are escaped automatically before packing the command line.
+Basenames containing ASCII spaces are rejected when a command line is packed; spaces in parent
+directories are allowed. The boot parser uses single ASCII spaces between tokens, without quoting.
 
 For multibinary (NVMB) images, an explicit value replaces the **last entry's** baked arguments
 and environment; earlier entries (normally daemons) are unchanged. Omitting the flag retains all

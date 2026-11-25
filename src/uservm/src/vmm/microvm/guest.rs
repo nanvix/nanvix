@@ -250,7 +250,7 @@ impl Guest {
         self.initrd = Some((::config::microvm::DEFAULT_INITRD_BASE, initrd_size));
 
         if let Some(args) =
-            Self::initrd_cmdline(initrd_filename, is_multibinary, initrd_args.as_deref())
+            Self::initrd_cmdline(initrd_filename, is_multibinary, initrd_args.as_deref())?
         {
             debug!("load_initrd(): writing args to virtual memory: {}", args);
             self.write_args(vmem, &args)?;
@@ -394,7 +394,7 @@ impl Guest {
         self.initrd_file_backed = true;
 
         let args: Option<String> =
-            Self::initrd_cmdline(initrd_filename, is_multibinary, initrd_args.as_deref());
+            Self::initrd_cmdline(initrd_filename, is_multibinary, initrd_args.as_deref())?;
 
         debug!(
             "prepare_initrd(): prepared (base={:#x}, file_size={}, size_rounded={}, \
@@ -418,21 +418,26 @@ impl Guest {
         initrd_filename: &str,
         is_multibinary: bool,
         initrd_args: Option<&str>,
-    ) -> Option<String> {
+    ) -> Result<Option<String>> {
         if is_multibinary && initrd_args.is_none() {
-            return None;
+            return Ok(None);
         }
 
-        let mut cmdline: String = ::std::path::Path::new(initrd_filename)
+        let basename: &str = ::std::path::Path::new(initrd_filename)
             .file_name()
             .and_then(|name| name.to_str())
-            .unwrap_or(initrd_filename)
-            .replace(';', r"\;");
+            .unwrap_or(initrd_filename);
+        if basename.contains(' ') {
+            let reason: &str = "initrd basename cannot contain spaces in the boot command line";
+            error!("initrd_cmdline(): {reason} (filename={initrd_filename})");
+            anyhow::bail!(reason);
+        }
+        let mut cmdline: String = basename.replace(';', r"\;");
         if let Some(args) = initrd_args {
             cmdline.push(' ');
             cmdline.push_str(args);
         }
-        Some(cmdline)
+        Ok(Some(cmdline))
     }
 
     ///
