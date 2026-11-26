@@ -461,6 +461,8 @@ impl Vmem {
     }
 
     /// Maps a page to the target virtual address space.
+    ///
+    /// On failure, no new mapping or page table is published, and the supplied frame is released.
     pub fn map(
         &mut self,
         uframe: UserFrame,
@@ -474,45 +476,41 @@ impl Vmem {
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
-        // Get corresponding page table.
-        let page_table: &mut PageTable<PageTableStorage> = {
-            let vaddr: PageTableAligned<VirtualAddress> = PageTableAligned::from_raw_value(
-                ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT),
-            )?;
-            let pgtable_vaddr: PageTableAddress = PageTableAddress::new(vaddr);
-            // Get the corresponding page directory entry.
-            let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
-                Some(pde) => pde,
-                None => {
-                    let reason: &str = "failed to read page directory entry";
-                    error!("{reason}");
-                    return Err(Error::new(ErrorCode::TryAgain, reason));
-                },
-            };
-
-            // Get corresponding page table.
-            // Check if corresponding page table does not exist.
-            if !pde.is_present() {
-                let page_table: PageTable<PageTableStorage> = Self::allocate_user_page_table()?;
-
-                let page_table_address: FrameAddress = page_table.physical_address()?;
-                // FIXME: do not be so open about permissions.
-                self.pgdir
-                    .map(pgtable_vaddr, page_table_address, false, AccessPermission::RDWR)?;
-
-                //===================================================================
-                // NOTE: if we fail beyond this point we should unmap the page table.
-                //===================================================================
-
-                self.user_page_tables
-                    .push_front((pgtable_vaddr, page_table));
-            };
-
-            self.lookup_user_page_table(pgtable_vaddr)?
+        let pgtable_vaddr: PageTableAddress =
+            PageTableAddress::new(PageTableAligned::from_raw_value(::sys::mm::align_down(
+                vaddr.into_raw_value(),
+                PGTAB_ALIGNMENT,
+            ))?);
+        let pde: PageDirectoryEntry = match self.pgdir.read_pde(pgtable_vaddr) {
+            Some(pde) => pde,
+            None => {
+                let reason: &str = "failed to read page directory entry";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::TryAgain, reason));
+            },
         };
 
-        // Map the page to the target virtual address space.
+        // Keep a new table private until its first page has been mapped successfully.
+        let mut new_page_table: Option<PageTable<PageTableStorage>> = if !pde.is_present() {
+            Some(Self::allocate_user_page_table()?)
+        } else {
+            None
+        };
+        let page_table: &mut PageTable<PageTableStorage> = match new_page_table.as_mut() {
+            Some(page_table) => page_table,
+            None => self.lookup_user_page_table(pgtable_vaddr)?,
+        };
+
         page_table.map(PageAddress::new(vaddr), uframe.address(), false, false, true, access)?;
+
+        if let Some(page_table) = new_page_table {
+            let page_table_address: FrameAddress = page_table.physical_address()?;
+            // FIXME: do not be so open about permissions.
+            self.pgdir
+                .map(pgtable_vaddr, page_table_address, false, AccessPermission::RDWR)?;
+            self.user_page_tables
+                .push_front((pgtable_vaddr, page_table));
+        }
 
         // Mirror the mapping into the per-process hardware page table (x86_64).
         self.hw_map_user(
@@ -520,10 +518,6 @@ impl Vmem {
             uframe.address().into_raw_value(),
             access.is_writable(),
         );
-
-        //=============================================================
-        // NOTE: if we fail beyond this point we should unmap the page.
-        //=============================================================
 
         // Frame is now owned by the page table; prevent Drop from freeing it.
         uframe.leak();

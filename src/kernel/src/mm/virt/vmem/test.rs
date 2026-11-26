@@ -226,11 +226,122 @@ fn test_map_kpage_success(root: &Vmem) -> bool {
     true
 }
 
+/// Checks user mappings across new and existing tables, including duplicate-frame ownership.
+fn test_map_user_pages(root: &Vmem) -> bool {
+    // SAFETY: the memory manager is initialized and these tests run without concurrent access.
+    let pgdir_page: KernelPage = unsafe { VirtMemoryManager::get_mut() }
+        .alloc_kpage(true)
+        .expect("failed to allocate test page directory");
+    let mut vmem: Vmem = Vmem::clone(root, pgdir_page).expect("failed to clone root address space");
+    let base: usize = config::memory_layout::USER_BASE.into_raw_value();
+
+    for (offset, table_count, page_count, access) in [
+        (0, 1, 1, AccessPermission::RDONLY),
+        (mem::PAGE_SIZE, 1, 2, AccessPermission::RDWR),
+        (mem::PGTAB_SIZE, 2, 1, AccessPermission::RDWR),
+    ] {
+        let vaddr: PageAligned<VirtualAddress> =
+            PageAligned::from_raw_value(base + offset).expect("invalid test user address");
+        // SAFETY: the physical memory manager is initialized and access is exclusive.
+        let owner: UserFrame = unsafe { PhysMemoryManager::get_mut() }
+            .alloc_user_frame()
+            .expect("failed to allocate test user frame");
+        vmem.map(owner.share().expect("failed to share test frame"), vaddr, access)
+            .expect("failed to map test user frame");
+        assert_eq!(owner.refcount().expect("failed to read frame refcount"), 2);
+        assert_eq!(vmem.user_page_tables.len(), table_count, "unexpected user table count");
+
+        let (pt_vaddr, page_table): &(PageTableAddress, PageTable<PageTableStorage>) = vmem
+            .user_page_tables
+            .front()
+            .expect("missing test user page table");
+        let pte: PageTableEntry = page_table
+            .read_pte_at(PageAddress::new(vaddr))
+            .expect("missing test user PTE");
+        assert_eq!(page_table.nmapped(), page_count, "unexpected mapped page count");
+        assert_eq!(
+            page_table
+                .lookup(PageAddress::new(vaddr))
+                .expect("missing test user frame"),
+            owner.address(),
+            "user mapping points to the wrong frame"
+        );
+        assert!(pte.flags().is_user(), "user mapping has supervisor permissions");
+        assert_eq!(pte.flags().is_writable(), access.is_writable(), "wrong user permissions");
+        assert_eq!(
+            vmem.pgdir
+                .read_pde(*pt_vaddr)
+                .expect("missing test user PDE")
+                .frame_address(),
+            page_table
+                .physical_address()
+                .expect("invalid test user table address")
+                .into_raw_value(),
+            "directory does not point to the retained user table"
+        );
+    }
+
+    let vaddr: PageAligned<VirtualAddress> =
+        PageAligned::from_raw_value(base).expect("invalid duplicate test address");
+    // SAFETY: the physical memory manager is initialized and access is exclusive.
+    let rejected: UserFrame = unsafe { PhysMemoryManager::get_mut() }
+        .alloc_user_frame()
+        .expect("failed to allocate duplicate user frame");
+    let original: FrameAddress = vmem
+        .try_find_user_frame(vaddr)
+        .expect("failed to find original user frame")
+        .expect("original user page is not mapped");
+    let error: Error = vmem
+        .map(
+            rejected.share().expect("failed to share duplicate frame"),
+            vaddr,
+            AccessPermission::RDWR,
+        )
+        .expect_err("duplicate user mapping must fail");
+    assert_eq!(error.code, ErrorCode::ResourceBusy, "unexpected duplicate mapping error");
+    assert_eq!(
+        rejected
+            .refcount()
+            .expect("failed to read rejected frame refcount"),
+        1,
+        "failed mapping retained the rejected frame"
+    );
+    assert_eq!(vmem.user_page_tables.len(), 2, "duplicate retained an extra user table");
+    let page_table: &mut PageTable<PageTableStorage> = vmem
+        .lookup_user_page_table(PageTableAddress::new(
+            PageTableAligned::from_raw_value(base).expect("invalid test table address"),
+        ))
+        .expect("missing original user table");
+    assert_eq!(page_table.nmapped(), 2, "duplicate changed the mapped page count");
+    assert_eq!(
+        page_table
+            .lookup(PageAddress::new(vaddr))
+            .expect("missing original mapping after duplicate"),
+        original,
+        "duplicate replaced the original user frame"
+    );
+    assert!(
+        !page_table
+            .read_pte_at(PageAddress::new(vaddr))
+            .expect("missing original user PTE")
+            .flags()
+            .is_writable(),
+        "duplicate changed the original permissions"
+    );
+
+    vmem.clear_user_space()
+        .expect("failed to reclaim test user mappings");
+    assert!(vmem.user_page_tables.is_empty(), "unmapping retained empty user tables");
+    info!("passed: test_map_user_pages");
+    true
+}
+
 /// Runs the virtual address space mapping regression tests.
 pub fn test(root: &Vmem) -> bool {
     let mut passed: bool = true;
     passed &= run_test!(test_map_kpage_bad_directory_new_table);
     passed &= run_test!(test_map_kpage_bad_directory_existing_table);
     passed &= test_map_kpage_success(root);
+    passed &= test_map_user_pages(root);
     passed
 }
