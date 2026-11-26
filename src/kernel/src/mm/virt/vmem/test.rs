@@ -336,9 +336,161 @@ fn test_map_user_pages(root: &Vmem) -> bool {
     true
 }
 
+/// Keeps the page and its frame ownership intact when its directory entry is absent.
+fn test_unmap_directory_error(root: &Vmem) -> bool {
+    // SAFETY: the memory managers are initialized and these tests run sequentially.
+    let pgdir_page: KernelPage = unsafe { VirtMemoryManager::get_mut() }
+        .alloc_kpage(true)
+        .expect("failed to allocate test page directory");
+    let mut vmem: Vmem = Vmem::clone(root, pgdir_page).expect("failed to clone root address space");
+    let vaddr: PageAligned<VirtualAddress> =
+        PageAligned::from_raw_value(config::memory_layout::USER_BASE.into_raw_value())
+            .expect("invalid test user address");
+    // SAFETY: the physical memory manager is initialized and access is exclusive.
+    let owner: UserFrame = unsafe { PhysMemoryManager::get_mut() }
+        .alloc_user_frame()
+        .expect("failed to allocate test user frame");
+    vmem.map(owner.share().expect("failed to share test frame"), vaddr, AccessPermission::RDWR)
+        .expect("failed to map test user frame");
+    let pt_vaddr: PageTableAddress = vmem.user_page_tables.front().expect("missing test table").0;
+    let table_address: FrameAddress = vmem
+        .pgdir
+        .unmap(pt_vaddr)
+        .expect("failed to remove test directory entry");
+    let pde_before: PteWord = vmem
+        .pgdir
+        .read_pde(pt_vaddr)
+        .expect("missing test PDE")
+        .into_raw_value();
+    let pte_before: PteWord = vmem
+        .try_find_user_pte(vaddr)
+        .expect("failed to find test PTE")
+        .expect("missing test PTE")
+        .into_raw_value();
+
+    let error: Error = vmem
+        .unmap(vaddr)
+        .expect_err("unmap with a missing directory must fail");
+    assert_eq!(error.code, ErrorCode::NoSuchEntry, "unexpected unmap error");
+    assert_eq!(vmem.user_page_tables.len(), 1, "failed unmap discarded the page table");
+    assert_eq!(
+        vmem.user_page_tables
+            .front()
+            .expect("missing test table")
+            .1
+            .nmapped(),
+        1,
+        "failed unmap changed the mapped page count"
+    );
+    assert_eq!(
+        vmem.pgdir
+            .read_pde(pt_vaddr)
+            .expect("missing test PDE")
+            .into_raw_value(),
+        pde_before,
+        "failed unmap changed the directory entry"
+    );
+    assert_eq!(
+        vmem.try_find_user_pte(vaddr)
+            .expect("failed to find test PTE after unmap")
+            .expect("failed unmap discarded the page")
+            .into_raw_value(),
+        pte_before,
+        "failed unmap changed the page entry"
+    );
+    assert_eq!(owner.refcount().expect("failed to read frame refcount"), 2);
+    vmem.pgdir
+        .map(pt_vaddr, table_address, false, AccessPermission::RDWR)
+        .expect("failed to restore test directory entry");
+    vmem.clear_user_space()
+        .expect("failed to reclaim test user mapping");
+    assert_eq!(owner.refcount().expect("failed to read frame refcount"), 1);
+    info!("passed: test_unmap_directory_error");
+    true
+}
+
+/// Checks frame transfer, retained siblings, last-page cleanup, and repeated unmapping.
+fn test_unmap_user_pages(root: &Vmem) -> bool {
+    // SAFETY: the memory managers are initialized and these tests run sequentially.
+    let pgdir_page: KernelPage = unsafe { VirtMemoryManager::get_mut() }
+        .alloc_kpage(true)
+        .expect("failed to allocate test page directory");
+    let mut vmem: Vmem = Vmem::clone(root, pgdir_page).expect("failed to clone root address space");
+    let base: usize = config::memory_layout::USER_BASE.into_raw_value();
+    let owners: [UserFrame; 3] = ::core::array::from_fn(|_| {
+        // SAFETY: the physical memory manager is initialized and access is exclusive.
+        unsafe { PhysMemoryManager::get_mut() }
+            .alloc_user_frame()
+            .expect("failed to allocate test user frame")
+    });
+    let addresses: [PageAligned<VirtualAddress>; 3] = [0, mem::PAGE_SIZE, mem::PGTAB_SIZE]
+        .map(|offset| PageAligned::from_raw_value(base + offset).expect("invalid test address"));
+    for (owner, vaddr) in owners.iter().zip(addresses) {
+        vmem.map(owner.share().expect("failed to share test frame"), vaddr, AccessPermission::RDWR)
+            .expect("failed to map test user frame");
+    }
+
+    for (index, table_count, sibling_present) in [(0, 2, true), (2, 1, false), (1, 0, false)] {
+        let vaddr: PageAligned<VirtualAddress> = addresses[index];
+        let frame: UserFrame = vmem
+            .unmap(vaddr)
+            .expect("failed to unmap test page")
+            .expect("unmap did not return the frame");
+        assert_eq!(frame.address(), owners[index].address(), "unmap returned the wrong frame");
+        assert_eq!(
+            owners[index]
+                .refcount()
+                .expect("failed to read frame refcount"),
+            2
+        );
+        drop(frame);
+        assert_eq!(
+            owners[index]
+                .refcount()
+                .expect("failed to read frame refcount"),
+            1
+        );
+        assert_eq!(vmem.user_page_tables.len(), table_count, "unexpected remaining table count");
+        assert!(vmem.unmap(vaddr).expect("repeated unmap failed").is_none());
+
+        let pt_vaddr: PageTableAddress = PageTableAddress::new(
+            PageTableAligned::from_raw_value(::sys::mm::align_down(
+                vaddr.into_raw_value(),
+                PGTAB_ALIGNMENT,
+            ))
+            .expect("invalid test table address"),
+        );
+        assert_eq!(
+            vmem.pgdir
+                .read_pde(pt_vaddr)
+                .expect("missing test PDE")
+                .is_present(),
+            sibling_present,
+            "directory entry does not match the remaining mappings"
+        );
+        if sibling_present {
+            let page_table: &mut PageTable<PageTableStorage> = vmem
+                .lookup_user_page_table(pt_vaddr)
+                .expect("unmap discarded the sibling page table");
+            assert_eq!(page_table.nmapped(), 1, "wrong remaining page count");
+            assert_eq!(
+                page_table
+                    .lookup(PageAddress::new(addresses[1]))
+                    .expect("missing sibling page"),
+                owners[1].address(),
+                "unmap changed the sibling mapping"
+            );
+        }
+    }
+    info!("passed: test_unmap_user_pages");
+    true
+}
+
 /// Runs the virtual address space mapping regression tests.
 pub fn test(root: &Vmem) -> bool {
     let mut passed: bool = true;
+    passed &= test_unmap_directory_error(root);
+    passed &= test_unmap_user_pages(root);
     passed &= run_test!(test_map_kpage_bad_directory_new_table);
     passed &= run_test!(test_map_kpage_bad_directory_existing_table);
     passed &= test_map_kpage_success(root);

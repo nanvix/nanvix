@@ -1764,6 +1764,8 @@ impl Vmem {
     /// logging any errors. This makes the method suitable for cleaning up lazily-allocated regions
     /// such as user stacks.
     ///
+    /// On failure, the page mapping and its frame ownership are preserved.
+    ///
     /// # Parameters
     ///
     /// - `vaddr`: Virtual address of the target page.
@@ -1828,18 +1830,27 @@ impl Vmem {
                 unreachable!("frame address must match what we expect");
             }
 
-            // Unmap the page from the target virtual address space.
-            page_table.unmap(page_address)?;
+            // Keep the final PTE intact until directory removal succeeds. The whole table is
+            // reclaimed below, so clearing that PTE separately is unnecessary.
+            let unmap_pgtable: bool = page_table.nmapped() == 1;
+            if !unmap_pgtable {
+                page_table.unmap(page_address)?;
+            }
 
-            (pgtable_vaddr, page_table.nmapped() == 0)
+            (pgtable_vaddr, unmap_pgtable)
         };
+
+        if unmap_pgtable {
+            self.pgdir.unmap(pgtable_vaddr)?;
+
+            // Directory removal invalidates the table's base address, but the final page may
+            // lie elsewhere in the table. Evict its translation before releasing the frame.
+            // SAFETY: called in kernel mode after removing the page's directory entry.
+            unsafe { ::arch::mem::paging::invlpg(vaddr.into_raw_value()) };
+        }
 
         // Mirror the unmapping into the per-process hardware page table (x86_64).
         self.hw_unmap_user(vaddr.into_raw_value());
-
-        //====================================================================================
-        // NOTE: if we fail beyond this point and we want to recover we should remap the page.
-        //====================================================================================
 
         if unmap_pgtable {
             // Remove page table from the list of user page tables.
@@ -1850,8 +1861,6 @@ impl Vmem {
                 .expect("page table must be in the list of user page tables");
 
             let (_pgtable_addr, _page_table) = self.user_page_tables.remove(at);
-
-            self.pgdir.unmap(pgtable_vaddr)?;
         }
 
         Ok(Some(UserFrame::new(frame_address)))
