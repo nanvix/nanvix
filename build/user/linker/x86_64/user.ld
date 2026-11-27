@@ -148,26 +148,23 @@ SECTIONS
 	/*
 	 * Thread-local storage.
 	 *
-	 * Must appear after all PROGBITS sections (.eh_frame, etc.) so that the NOBITS .tbss
-	 * sub-section does not cause virtual-address (VMA) overlap with subsequent PROGBITS sections.
+	 * Keep initialized TLS separate so that zero-filling .tbss cannot overwrite its template.
+	 * Page alignment matches the TDA allocator's rounding of the TLS block size.
 	 */
-	.tls : ALIGN(PAGE_SIZE)
+	.tdata : ALIGN(PAGE_SIZE)
 	{
 		__TLS_START = .;
-		*(.tdata)
-		*(.tbss)
+		*(.tdata .tdata.*)
+	}
+
+	.tbss : ALIGN(PAGE_SIZE)
+	{
+		*(.tbss .tbss.*)
 		__TLS_END = .;
 	}
 
-	/*
-	 * PROGBITS companion for .tls.
-	 *
-	 * Because .tbss is NOBITS it does not produce a LOAD segment.  The TDA allocator (tda.rs)
-	 * copies __TLS_START..__TLS_END into each new thread, so the kernel must have allocated and
-	 * zero-filled the pages backing that range.  This zero-filled PROGBITS section creates a LOAD
-	 * segment that covers the .tbss region, causing the ELF loader to map and clear those pages.
-	 */
-	.tls_init ADDR(.tls) : AT(ADDR(.tls))
+	/* Materialize only .tbss in a loadable segment for the TDA allocator's template copy. */
+	.tls_init ADDR(.tbss) : AT(ADDR(.tbss))
 	{
 		FILL(0x0000000000000000);
 		. = __TLS_END;

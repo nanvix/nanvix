@@ -27,5 +27,5 @@
 	"disable-redzone": true,
 	"stack-probes": { "kind": "inline" },
 	"relocation-model": "static",
-	"has-thread-local": false
+	"has-thread-local": true
 }
