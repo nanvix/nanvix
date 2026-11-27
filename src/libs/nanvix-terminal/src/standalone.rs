@@ -15,17 +15,21 @@
 //! when host stdout is a terminal, and block-buffered when it is piped or redirected to a file.
 //! Either way, buffered output is flushed as soon as no further guest output is pending, so output
 //! that the guest is waiting on is never held back.
+//!
+//! A separate, budgeted drain absorbs guest output while host writes are blocked. Its queue is
+//! flushed before EOF; exhausting the budget is an error, never silent loss or an unbounded wait.
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use ::anyhow::Result;
+#[cfg(unix)]
+use ::log::warn;
 use ::log::{
     debug,
     error,
     info,
-    warn,
 };
 use ::nanvix_sandbox_config::StandaloneConfig;
 use ::std::io::{
@@ -289,8 +293,10 @@ impl Terminal {
 
         // Bridge host stdin/stdout with guest I/O channels.
         let io_result: Result<()> = Self::bridge_io(io).await;
-        if let Err(ref e) = io_result {
-            warn!("terminal I/O bridge ended with error: {e:?}");
+        if let Err(e) = io_result {
+            error!("terminal I/O bridge failed: {e:?}");
+            handle.abort_and_wait().await;
+            return Err(e);
         }
 
         match handle.wait().await {
@@ -312,8 +318,8 @@ impl Terminal {
     ///
     /// Input and output are handled by independent async tasks: a dedicated task forwards host
     /// stdin to the guest input channel, while the current task drains guest output to host
-    /// stdout. This decoupling ensures that a slow stdout write (e.g., a `spawn_blocking` call
-    /// on Windows piped stdout) can never stall stdin forwarding.
+    /// stdout. A budgeted drain continues receiving guest output while the host writer is blocked,
+    /// so host back-pressure cannot park the vCPU's bounded-channel send.
     ///
     /// Guest output is buffered according to the tty semantics of host stdout (see
     /// `FlushPolicy`).
@@ -355,7 +361,7 @@ impl Terminal {
         let policy: FlushPolicy = FlushPolicy::for_host_stdout();
         debug!("standalone: forwarding guest output to host stdout (policy={policy:?})");
         let output_result: ::std::io::Result<()> =
-            Self::forward_output(&mut output_rx, io::stdout(), policy).await;
+            Self::buffered_output(&mut output_rx, io::stdout(), policy).await;
 
         // Abort the input task immediately — the stdin thread blocks on read() and cannot be
         // interrupted portably, so waiting provides no benefit.
@@ -371,6 +377,23 @@ impl Terminal {
                 Err(e.into())
             },
         }
+    }
+
+    /// Drains guest output independently of writes to the host stream.
+    async fn buffered_output<W>(
+        output_rx: &mut mpsc::Receiver<Vec<u8>>,
+        writer: W,
+        policy: FlushPolicy,
+    ) -> ::std::io::Result<()>
+    where
+        W: AsyncWrite + Unpin,
+    {
+        let (writer_tx, mut writer_rx) = mpsc::channel::<Vec<u8>>(1);
+        tokio::try_join!(
+            Self::forward_output(&mut writer_rx, writer, policy),
+            ::uservm::output::buffer_output(output_rx, writer_tx),
+        )?;
+        Ok(())
     }
 
     ///
