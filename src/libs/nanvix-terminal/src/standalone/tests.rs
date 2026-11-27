@@ -171,7 +171,7 @@ async fn line_policy_flushes_after_newlines() {
         queued_output(&["one", " two\n", "three", " four\n", "five"]);
     let writer: RecordingWriter = RecordingWriter::default();
 
-    Terminal::forward_output(&mut output_rx, writer.clone(), FlushPolicy::Line)
+    Terminal::buffered_output(&mut output_rx, writer.clone(), FlushPolicy::Line)
         .await
         .expect("output should be forwarded");
 
@@ -268,6 +268,12 @@ async fn write_errors_are_returned() {
 /// The producer must finish before a stalled host resumes reading, without losing final output.
 #[tokio::test]
 async fn stalled_host_does_not_park_producer_and_eof_flushes_output() {
+    for policy in [FlushPolicy::Line, FlushPolicy::Block] {
+        check_stalled_host_output(policy).await;
+    }
+}
+
+async fn check_stalled_host_output(policy: FlushPolicy) {
     use ::tokio::io::AsyncReadExt;
 
     let expected: Vec<u8> = (0..4096u32)
@@ -275,9 +281,10 @@ async fn stalled_host_does_not_park_producer_and_eof_flushes_output() {
         .collect();
     let (output_tx, mut output_rx) = mpsc::channel::<Vec<u8>>(1);
     let (writer, mut reader) = io::duplex(1024);
-    let forwarder: JoinHandle<::std::io::Result<()>> = tokio::spawn(async move {
-        Terminal::buffered_output(&mut output_rx, writer, FlushPolicy::Block).await
-    });
+    let forwarder: JoinHandle<::std::io::Result<()>> =
+        tokio::spawn(
+            async move { Terminal::buffered_output(&mut output_rx, writer, policy).await },
+        );
     let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
     let producer: ::std::thread::JoinHandle<()> = ::std::thread::spawn({
         let expected: Vec<u8> = expected.clone();

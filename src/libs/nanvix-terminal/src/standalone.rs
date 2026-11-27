@@ -389,7 +389,7 @@ impl Terminal {
         let (writer_tx, mut writer_rx) = mpsc::channel::<Vec<u8>>(1);
         tokio::try_join!(
             Self::forward_output(&mut writer_rx, writer, policy),
-            ::uservm::output::buffer_output(output_rx, writer_tx),
+            ::uservm::output::buffer_output(output_rx, writer_tx, policy == FlushPolicy::Line),
         )?;
         Ok(())
     }
