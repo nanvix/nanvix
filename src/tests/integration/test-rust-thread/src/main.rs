@@ -7,6 +7,7 @@
 
 #![no_std]
 #![no_main]
+#![feature(thread_local)]
 #![deny(clippy::all)]
 #![deny(clippy::as_conversions)]
 #![deny(clippy::unwrap_used)]
