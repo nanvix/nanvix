@@ -23,3 +23,5 @@ Output remains ordered, prompts are flushed when idle, and pending output is flu
 including after the guest exits. Host stdout must eventually become writable for lossless
 completion. The Windows debug-console sink uses the same host-output buffering module but retains
 its separate 4 MiB, best-effort policy: excess debug bytes may be dropped and counted.
+Host-output errors, including closed pipes, request VM shutdown and are returned to the caller
+after the vCPU has stopped.

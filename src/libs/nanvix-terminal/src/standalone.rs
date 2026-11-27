@@ -33,7 +33,6 @@ use ::log::{
 };
 use ::nanvix_sandbox_config::StandaloneConfig;
 use ::std::io::{
-    ErrorKind,
     IsTerminal,
     Read,
 };
@@ -295,7 +294,9 @@ impl Terminal {
         let io_result: Result<()> = Self::bridge_io(io).await;
         if let Err(e) = io_result {
             error!("terminal I/O bridge failed: {e:?}");
-            handle.abort_and_wait().await;
+            if let Err(shutdown_error) = handle.shutdown().await {
+                error!("terminal: VM shutdown failed after I/O error: {shutdown_error:?}");
+            }
             return Err(e);
         }
 
@@ -369,9 +370,6 @@ impl Terminal {
 
         match output_result {
             Ok(()) => Ok(()),
-            // The reader of host stdout went away (e.g., the other end of a pipe was closed), so
-            // there is nobody left to forward guest output to.
-            Err(e) if e.kind() == ErrorKind::BrokenPipe => Ok(()),
             Err(e) => {
                 error!("failed to forward guest output to stdout: {e}");
                 Err(e.into())

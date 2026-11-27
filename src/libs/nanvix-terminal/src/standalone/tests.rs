@@ -3,6 +3,7 @@
 
 use super::*;
 use ::std::{
+    io::ErrorKind,
     pin::Pin,
     sync::{
         Arc,

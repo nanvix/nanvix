@@ -494,6 +494,27 @@ impl StandaloneVmHandle {
     ///
     /// # Description
     ///
+    /// Requests VM shutdown through the orchestrator, then joins the vCPU and I/O tasks.
+    ///
+    /// # Returns
+    ///
+    /// The VM exit status, or the error reported by the VM task.
+    ///
+    pub async fn shutdown(self) -> Result<u16> {
+        if self
+            ._io_cmd_tx
+            .send(IoControlCommand::Shutdown)
+            .await
+            .is_err()
+        {
+            warn!("standalone: shutdown control channel closed; awaiting VM completion");
+        }
+        self.wait().await
+    }
+
+    ///
+    /// # Description
+    ///
     /// Aborts the VM and I/O handler tasks without waiting for completion.
     ///
     pub fn abort(&self) {
