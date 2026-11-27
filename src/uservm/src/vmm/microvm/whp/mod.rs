@@ -16,7 +16,6 @@
 // Modules
 //==================================================================================================
 
-pub mod console;
 pub mod lapic;
 pub mod partition;
 pub mod timer;
