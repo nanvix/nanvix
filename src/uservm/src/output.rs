@@ -129,17 +129,22 @@ async fn buffer_output_with_budget(
             permit = downstream.reserve(), if !buffer.is_empty()
                 && (upstream.is_empty() || buffer.data.len() >= OUTPUT_BATCH_BYTES
                     || (line_buffered && buffer.newlines > 0)) => {
-                let permit: mpsc::Permit<'_, Vec<u8>> = permit.map_err(|_| {
-                    error!("buffer_output(): host output writer closed");
-                    io::Error::new(io::ErrorKind::BrokenPipe, "host output writer closed")
-                })?;
+                let permit: mpsc::Permit<'_, Vec<u8>> = permit.map_err(|_| writer_closed())?;
                 let mut batch: Vec<u8> = Vec::new();
                 buffer.drain_into(&mut batch, line_buffered);
                 permit.send(batch);
             },
+            // The reserve branch is disabled while nothing can be handed off, so watch for writer
+            // closure separately to report it even when the guest is idle.
+            () = downstream.closed() => return Err(writer_closed()),
         }
     }
     Ok(())
+}
+
+fn writer_closed() -> io::Error {
+    error!("buffer_output(): host output writer closed");
+    io::Error::new(io::ErrorKind::BrokenPipe, "host output writer closed")
 }
 
 #[cfg(test)]

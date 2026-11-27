@@ -77,3 +77,16 @@ async fn closed_writer_is_reported() {
         .expect_err("writer closure must fail");
     assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
 }
+
+#[tokio::test]
+async fn closed_writer_is_reported_while_guest_is_idle() {
+    let (_tx, mut rx) = mpsc::channel::<Vec<u8>>(1);
+    let (writer_tx, writer_rx) = mpsc::channel::<Vec<u8>>(1);
+    drop(writer_rx);
+
+    let error: io::Error = timeout(TEST_TIMEOUT, buffer_output(&mut rx, writer_tx, false))
+        .await
+        .expect("writer closure must be noticed without guest output")
+        .expect_err("writer closure must fail");
+    assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+}
