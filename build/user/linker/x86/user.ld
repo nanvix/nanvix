@@ -182,6 +182,9 @@ SECTIONS
 		__TLS_END = .;
 	}
 
+	ASSERT(ALIGNOF(.tdata) <= PAGE_SIZE, "initialized TLS alignment exceeds PAGE_SIZE")
+	ASSERT(ALIGNOF(.tbss) <= PAGE_SIZE, "zero-filled TLS alignment exceeds PAGE_SIZE")
+
 	/* Materialize only .tbss in a loadable segment for the TDA allocator's template copy. */
 	.tls_init ADDR(.tbss) : AT(ADDR(.tbss))
 	{

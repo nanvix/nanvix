@@ -21,6 +21,9 @@ Enable the nightly `thread_local` feature and annotate statically initialized va
 `#[thread_local]`. Both initialized and zero-filled TLS are copied into each thread's data area.
 The guest linker scripts collect the compiler's `.tdata`, `.tbss`, and named subsections into
 that initialization template.
+TLS alignment is limited to the runtime allocator's page alignment (4096 bytes). The linker
+rejects values requiring greater alignment rather than creating a potentially misaligned thread
+data area.
 
 Use the normal `nvx-crt0` startup path for main-thread initialization and
 `syscall::pthread::pthread_create()` for workers. Raw kernel threads created without a thread

@@ -40,7 +40,8 @@ const TLS_YIELDS: usize = 8;
 // Structures
 //==================================================================================================
 
-#[repr(align(64))]
+// Exercise the maximum TLS alignment supported by the user linker scripts.
+#[repr(align(4096))]
 struct TlsValue(usize);
 
 //==================================================================================================
