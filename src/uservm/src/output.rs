@@ -13,10 +13,8 @@ use ::std::{
 };
 use ::tokio::sync::mpsc;
 
-/// Maximum queued application output, excluding the bounded transport channels.
 const OUTPUT_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 
-/// Maximum batch handed to a host writer.
 const OUTPUT_BATCH_BYTES: usize = 64 * 1024;
 
 /// Byte buffer shared by best-effort console and lossless application output.
@@ -64,8 +62,7 @@ impl OutputBuffer {
 ///
 /// Eagerly drains guest output while a separate host writer may be stalled.
 ///
-/// The queue is lossless up to a 64 MiB byte budget. Its byte-oriented storage bounds metadata
-/// even for one-byte or empty writes. The downstream channel must have capacity one, bounding
+/// The queue is lossless up to 64 MiB. The downstream channel must have capacity one to bound
 /// additional staging to one 64 KiB batch plus the batch being written.
 ///
 /// # Parameters
@@ -114,7 +111,8 @@ async fn buffer_output_with_budget(
                     None => eof = true,
                 }
             },
-            permit = downstream.reserve(), if !buffer.is_empty() => {
+            permit = downstream.reserve(), if !buffer.is_empty()
+                && (upstream.is_empty() || buffer.data.len() >= OUTPUT_BATCH_BYTES) => {
                 let permit: mpsc::Permit<'_, Vec<u8>> = permit.map_err(|_| {
                     error!("buffer_output(): host output writer closed");
                     io::Error::new(io::ErrorKind::BrokenPipe, "host output writer closed")

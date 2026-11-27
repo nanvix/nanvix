@@ -156,7 +156,7 @@ async fn block_policy_coalesces_queued_output() {
     let mut output_rx: mpsc::Receiver<Vec<u8>> = queued_output(&["one\n", "two\n", "three"]);
     let writer: RecordingWriter = RecordingWriter::default();
 
-    Terminal::forward_output(&mut output_rx, writer.clone(), FlushPolicy::Block)
+    Terminal::buffered_output(&mut output_rx, writer.clone(), FlushPolicy::Block)
         .await
         .expect("output should be forwarded");
 
