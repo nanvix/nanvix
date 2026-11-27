@@ -5912,3 +5912,17 @@ f8afc7ff1360b1780db3c689488690ccfb1e3634,Read-only mount,seq_read,100,73,141,108
 5a2502106e3a60314a0556c2dd937969f5a203e0,Read-only mount,open+close,100,233,267,1103
 5a2502106e3a60314a0556c2dd937969f5a203e0,Read-only mount,readdir,100,440,597,1208
 5a2502106e3a60314a0556c2dd937969f5a203e0,Read-only mount,seq_read,100,77,149,10778
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Writable mount,protocol,100,199,210,214
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Writable mount,stat,100,148,167,174
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Writable mount,open+close,100,239,274,1127
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Writable mount,readdir,100,449,614,1221
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Writable mount,create+close+unlink,100,228,251,254
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Writable mount,mkdir+rmdir,100,231,261,1693
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Writable mount,seq_read,100,73,157,10817
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Writable mount,rename,100,162,186,191
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Writable mount,write+flush,100,91,113,1437
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Read-only mount,protocol,100,199,212,219
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Read-only mount,stat,100,145,166,170
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Read-only mount,open+close,100,232,262,1081
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Read-only mount,readdir,100,444,598,1211
+80f53b7dabfd0655926a1d0e95c97999b32a2dac,Read-only mount,seq_read,100,71,165,10838
