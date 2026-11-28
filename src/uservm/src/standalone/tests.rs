@@ -3,6 +3,43 @@
 
 use super::*;
 
+#[tokio::test]
+async fn shutdown_requests_vcpu_stop_and_waits_for_completion() {
+    let (io_cmd_tx, mut io_cmd_rx) = mpsc::channel(1);
+    let (_io_resp_tx, io_resp_rx) = mpsc::channel(1);
+    let (requested_tx, requested_rx) = tokio::sync::oneshot::channel();
+    let (exit_tx, exit_rx) = tokio::sync::oneshot::channel();
+    let handle: StandaloneVmHandle = StandaloneVmHandle {
+        vmm_handle: tokio::spawn(async move {
+            assert!(matches!(io_cmd_rx.recv().await, Some(IoControlCommand::Shutdown)));
+            requested_tx.send(()).expect("shutdown observer");
+            exit_rx.await.expect("VM exit signal");
+            Ok(7)
+        }),
+        io_handle: tokio::spawn(async {}),
+        watchdog_handle: tokio::spawn(::std::future::pending()),
+        _io_cmd_tx: io_cmd_tx,
+        _io_resp_rx: io_resp_rx,
+        #[cfg(feature = "profile-time")]
+        perf_timings: PerfTimings::new(),
+    };
+    let shutdown: JoinHandle<Result<u16>> = tokio::spawn(handle.shutdown());
+    tokio::time::timeout(REPLY_TIMEOUT, requested_rx)
+        .await
+        .expect("shutdown must reach the orchestrator")
+        .expect("shutdown request");
+    assert!(!shutdown.is_finished(), "shutdown must join the running VM");
+    exit_tx.send(()).expect("release VM");
+    assert_eq!(
+        tokio::time::timeout(REPLY_TIMEOUT, shutdown)
+            .await
+            .expect("shutdown must finish")
+            .expect("shutdown task")
+            .expect("VM exit"),
+        7
+    );
+}
+
 fn test_pid() -> ProcessIdentifier {
     ProcessIdentifier::from(10)
 }

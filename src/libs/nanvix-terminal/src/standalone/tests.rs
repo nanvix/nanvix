@@ -3,6 +3,7 @@
 
 use super::*;
 use ::std::{
+    io::ErrorKind,
     pin::Pin,
     sync::{
         Arc,
@@ -155,7 +156,7 @@ async fn block_policy_coalesces_queued_output() {
     let mut output_rx: mpsc::Receiver<Vec<u8>> = queued_output(&["one\n", "two\n", "three"]);
     let writer: RecordingWriter = RecordingWriter::default();
 
-    Terminal::forward_output(&mut output_rx, writer.clone(), FlushPolicy::Block)
+    Terminal::buffered_output(&mut output_rx, writer.clone(), FlushPolicy::Block)
         .await
         .expect("output should be forwarded");
 
@@ -170,7 +171,7 @@ async fn line_policy_flushes_after_newlines() {
         queued_output(&["one", " two\n", "three", " four\n", "five"]);
     let writer: RecordingWriter = RecordingWriter::default();
 
-    Terminal::forward_output(&mut output_rx, writer.clone(), FlushPolicy::Line)
+    Terminal::buffered_output(&mut output_rx, writer.clone(), FlushPolicy::Line)
         .await
         .expect("output should be forwarded");
 
@@ -195,7 +196,7 @@ async fn output_is_flushed_when_nothing_else_is_queued() {
         let writer: RecordingWriter = RecordingWriter::default();
         let forwarder: JoinHandle<::std::io::Result<()>> = ::tokio::spawn({
             let writer: RecordingWriter = writer.clone();
-            async move { Terminal::forward_output(&mut output_rx, writer, policy).await }
+            async move { Terminal::buffered_output(&mut output_rx, writer, policy).await }
         });
 
         output_tx
@@ -261,5 +262,71 @@ async fn write_errors_are_returned() {
 
             assert_eq!(error.kind(), kind, "policy={policy:?}");
         }
+    }
+}
+
+/// The producer must finish before a stalled host resumes reading, without losing final output.
+#[tokio::test]
+async fn stalled_host_does_not_park_producer_and_eof_flushes_output() {
+    for policy in [FlushPolicy::Line, FlushPolicy::Block] {
+        check_stalled_host_output(policy).await;
+    }
+}
+
+async fn check_stalled_host_output(policy: FlushPolicy) {
+    use ::tokio::io::AsyncReadExt;
+
+    let expected: Vec<u8> = (0..4096u32)
+        .flat_map(|seq| seq.to_le_bytes().repeat(64))
+        .collect();
+    let (output_tx, mut output_rx) = mpsc::channel::<Vec<u8>>(1);
+    let (writer, mut reader) = io::duplex(1024);
+    let forwarder: JoinHandle<::std::io::Result<()>> =
+        tokio::spawn(
+            async move { Terminal::buffered_output(&mut output_rx, writer, policy).await },
+        );
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+    let producer: ::std::thread::JoinHandle<()> = ::std::thread::spawn({
+        let expected: Vec<u8> = expected.clone();
+        move || {
+            for chunk in expected.chunks(256) {
+                output_tx
+                    .blocking_send(chunk.to_vec())
+                    .expect("producer channel remains open");
+            }
+            drop(output_tx);
+            let _ = done_tx.send(());
+        }
+    });
+
+    let finished_before_host_read: bool =
+        matches!(time::timeout(FLUSH_TIMEOUT, done_rx).await, Ok(Ok(())));
+    let mut actual: Vec<u8> = Vec::new();
+    time::timeout(FLUSH_TIMEOUT, reader.read_to_end(&mut actual))
+        .await
+        .expect("host output must reach EOF")
+        .expect("host read");
+    producer.join().expect("producer thread");
+    forwarder
+        .await
+        .expect("forwarder task")
+        .expect("forwarder must flush before EOF");
+
+    assert_eq!(actual, expected, "all output must be delivered in order before EOF");
+    assert!(finished_before_host_read, "host back-pressure parked the producer");
+}
+
+#[tokio::test]
+async fn buffered_output_preserves_host_write_errors() {
+    for kind in [ErrorKind::BrokenPipe, ErrorKind::PermissionDenied] {
+        let mut output_rx: mpsc::Receiver<Vec<u8>> = queued_output(&["lost\n"]);
+        let error: ::std::io::Error = Terminal::buffered_output(
+            &mut output_rx,
+            RecordingWriter::failing(kind),
+            FlushPolicy::Block,
+        )
+        .await
+        .expect_err("buffered forwarding must report host write errors");
+        assert_eq!(error.kind(), kind);
     }
 }

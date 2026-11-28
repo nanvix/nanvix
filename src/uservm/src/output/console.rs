@@ -311,7 +311,7 @@ fn drain_loop(channel: &Arc<Channel>, mut inner: Box<dyn Write + Send>) {
             channel.drained.notify_all();
             return;
         }
-        state.data.drain_into(&mut scratch);
+        state.data.drain_into(&mut scratch, false);
         drop(state);
 
         let count: u64 = scratch.len() as u64;

@@ -17,7 +17,7 @@ async fn stalled_writer_does_not_stall_guest_and_eof_preserves_order() {
     let (tx, mut rx) = mpsc::channel::<Vec<u8>>(1);
     let (writer_tx, mut writer_rx) = mpsc::channel::<Vec<u8>>(1);
     let forwarder: JoinHandle<io::Result<()>> =
-        tokio::spawn(async move { buffer_output(&mut rx, writer_tx).await });
+        tokio::spawn(async move { buffer_output(&mut rx, writer_tx, false).await });
     let expected: Vec<u8> = (0..4096u32)
         .flat_map(|seq| seq.to_le_bytes().repeat(64))
         .collect();
@@ -57,7 +57,7 @@ async fn exhausted_budget_is_reported_without_blocking() {
     writer_tx.try_send(vec![0]).expect("stall writer");
 
     let error: io::Error =
-        timeout(TEST_TIMEOUT, buffer_output_with_budget(&mut rx, writer_tx, BUDGET))
+        timeout(TEST_TIMEOUT, buffer_output_with_budget(&mut rx, writer_tx, BUDGET, false))
             .await
             .expect("budget error must not block")
             .expect_err("one byte beyond the budget must fail");
@@ -72,8 +72,21 @@ async fn closed_writer_is_reported() {
     let (writer_tx, writer_rx) = mpsc::channel::<Vec<u8>>(1);
     drop(writer_rx);
 
-    let error: io::Error = buffer_output(&mut rx, writer_tx)
+    let error: io::Error = buffer_output(&mut rx, writer_tx, false)
         .await
+        .expect_err("writer closure must fail");
+    assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+}
+
+#[tokio::test]
+async fn closed_writer_is_reported_while_guest_is_idle() {
+    let (_tx, mut rx) = mpsc::channel::<Vec<u8>>(1);
+    let (writer_tx, writer_rx) = mpsc::channel::<Vec<u8>>(1);
+    drop(writer_rx);
+
+    let error: io::Error = timeout(TEST_TIMEOUT, buffer_output(&mut rx, writer_tx, false))
+        .await
+        .expect("writer closure must be noticed without guest output")
         .expect_err("writer closure must fail");
     assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
 }

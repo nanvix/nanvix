@@ -1072,14 +1072,6 @@ fn output_fn(
     queue: Sender<IkcFrame>,
     sg_bulk_registry: Arc<Mutex<SgBulkRegistry>>,
 ) -> Box<StdoutFn> {
-    // On Windows/WHP the closure below runs on the vCPU thread while it holds the WHP partition
-    // lock (held across `Emulator::handle_pmio_access()`). Sending directly on the bounded channel
-    // there would block the vCPU thread under the lock whenever the asynchronous consumer is
-    // momentarily starved, freezing the guest (issue #2603). `IkcStdoutSink` interposes a dedicated
-    // forwarding thread on Windows so the under-lock enqueue never blocks (lossless hand-off;
-    // back-pressure applied off the partition lock). On Linux the frames are sent directly.
-    let sink: crate::pal::IkcStdoutSink = crate::pal::IkcStdoutSink::new(queue);
-
     // Output function used for emulating I/O port writes.
     let output = move |vm: &Arc<Mutex<VirtualMemory>>, envelope: &VmBusMessage| -> Result<()> {
         use ::std::mem;
@@ -1107,7 +1099,7 @@ fn output_fn(
                 };
 
                 trace!("output(): forwarding message to system VM");
-                if let Err(e) = sink.send(IkcFrame::Message(message)) {
+                if let Err(e) = queue.blocking_send(IkcFrame::Message(message)) {
                     let reason: String = format!("failed to send message: {e:?}");
                     error!("output(): {reason}");
                     anyhow::bail!(reason);
@@ -1139,7 +1131,7 @@ fn output_fn(
                 let bulk: DataChunk = DataChunk::new(header, data);
 
                 trace!("output(): forwarding data chunk transfer ({data_len} bytes)");
-                if let Err(e) = sink.send(IkcFrame::Bulk(bulk)) {
+                if let Err(e) = queue.blocking_send(IkcFrame::Bulk(bulk)) {
                     let reason: String = format!("failed to send data chunk transfer: {e:?}");
                     error!("output(): {reason}");
                     anyhow::bail!(reason);
@@ -1197,7 +1189,7 @@ fn output_fn(
                             sg_bulk.total_len,
                             sg_bulk.segments.len()
                         );
-                        if let Err(e) = sink.send(IkcFrame::Bulk(bulk)) {
+                        if let Err(e) = queue.blocking_send(IkcFrame::Bulk(bulk)) {
                             let reason: String =
                                 format!("failed to send scatter/gather transfer: {e:?}");
                             error!("output(): {reason}");
@@ -1233,7 +1225,7 @@ fn output_fn(
                              (transfer_id={transfer_id}, len={})",
                             sg_bulk.total_len
                         );
-                        if let Err(e) = sink.send(IkcFrame::Bulk(bulk)) {
+                        if let Err(e) = queue.blocking_send(IkcFrame::Bulk(bulk)) {
                             sg_bulk_registry.blocking_lock().remove(transfer_id);
                             let reason: String =
                                 format!("failed to send scatter/gather pull request: {e:?}");

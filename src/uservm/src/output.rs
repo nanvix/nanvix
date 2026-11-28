@@ -13,16 +13,15 @@ use ::std::{
 };
 use ::tokio::sync::mpsc;
 
-/// Maximum queued application output, excluding the bounded transport channels.
 const OUTPUT_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 
-/// Maximum batch handed to a host writer.
 const OUTPUT_BATCH_BYTES: usize = 64 * 1024;
 
 /// Byte buffer shared by best-effort console and lossless application output.
 pub(crate) struct OutputBuffer {
     data: VecDeque<u8>,
     capacity: usize,
+    newlines: usize,
 }
 
 impl OutputBuffer {
@@ -31,6 +30,7 @@ impl OutputBuffer {
         Self {
             data: VecDeque::new(),
             capacity,
+            newlines: 0,
         }
     }
 
@@ -48,14 +48,24 @@ impl OutputBuffer {
     pub(crate) fn append(&mut self, bytes: &[u8]) -> usize {
         let count: usize = bytes.len().min(self.available());
         self.data.extend(&bytes[..count]);
+        self.newlines += bytes[..count].iter().filter(|&&byte| byte == b'\n').count();
         count
     }
 
     /// Replaces `batch` with the next bounded batch of queued bytes.
-    pub(crate) fn drain_into(&mut self, batch: &mut Vec<u8>) {
+    pub(crate) fn drain_into(&mut self, batch: &mut Vec<u8>, line_buffered: bool) {
         batch.clear();
-        let count: usize = self.data.len().min(OUTPUT_BATCH_BYTES);
+        let mut count: usize = self.data.len().min(OUTPUT_BATCH_BYTES);
+        if line_buffered && self.newlines > 0 {
+            count = self
+                .data
+                .iter()
+                .take(count)
+                .position(|&byte| byte == b'\n')
+                .map_or(count, |index| index + 1);
+        }
         batch.extend(self.data.drain(..count));
+        self.newlines -= batch.iter().filter(|&&byte| byte == b'\n').count();
     }
 }
 
@@ -64,14 +74,14 @@ impl OutputBuffer {
 ///
 /// Eagerly drains guest output while a separate host writer may be stalled.
 ///
-/// The queue is lossless up to a 64 MiB byte budget. Its byte-oriented storage bounds metadata
-/// even for one-byte or empty writes. The downstream channel must have capacity one, bounding
+/// The queue is lossless up to 64 MiB. The downstream channel must have capacity one to bound
 /// additional staging to one 64 KiB batch plus the batch being written.
 ///
 /// # Parameters
 ///
 /// - `upstream`: Guest application output.
 /// - `downstream`: Channel consumed by the host writer.
+/// - `line_buffered`: Hand off complete lines promptly instead of coalescing them into blocks.
 ///
 /// # Returns
 ///
@@ -81,14 +91,16 @@ impl OutputBuffer {
 pub async fn buffer_output(
     upstream: &mut mpsc::Receiver<Vec<u8>>,
     downstream: mpsc::Sender<Vec<u8>>,
+    line_buffered: bool,
 ) -> io::Result<()> {
-    buffer_output_with_budget(upstream, downstream, OUTPUT_BUDGET_BYTES).await
+    buffer_output_with_budget(upstream, downstream, OUTPUT_BUDGET_BYTES, line_buffered).await
 }
 
 async fn buffer_output_with_budget(
     upstream: &mut mpsc::Receiver<Vec<u8>>,
     downstream: mpsc::Sender<Vec<u8>>,
     budget: usize,
+    line_buffered: bool,
 ) -> io::Result<()> {
     let mut buffer: OutputBuffer = OutputBuffer::new(budget);
     let mut eof: bool = false;
@@ -114,18 +126,25 @@ async fn buffer_output_with_budget(
                     None => eof = true,
                 }
             },
-            permit = downstream.reserve(), if !buffer.is_empty() => {
-                let permit: mpsc::Permit<'_, Vec<u8>> = permit.map_err(|_| {
-                    error!("buffer_output(): host output writer closed");
-                    io::Error::new(io::ErrorKind::BrokenPipe, "host output writer closed")
-                })?;
+            permit = downstream.reserve(), if !buffer.is_empty()
+                && (upstream.is_empty() || buffer.data.len() >= OUTPUT_BATCH_BYTES
+                    || (line_buffered && buffer.newlines > 0)) => {
+                let permit: mpsc::Permit<'_, Vec<u8>> = permit.map_err(|_| writer_closed())?;
                 let mut batch: Vec<u8> = Vec::new();
-                buffer.drain_into(&mut batch);
+                buffer.drain_into(&mut batch, line_buffered);
                 permit.send(batch);
             },
+            // The reserve branch is disabled while nothing can be handed off, so watch for writer
+            // closure separately to report it even when the guest is idle.
+            () = downstream.closed() => return Err(writer_closed()),
         }
     }
     Ok(())
+}
+
+fn writer_closed() -> io::Error {
+    error!("buffer_output(): host output writer closed");
+    io::Error::new(io::ErrorKind::BrokenPipe, "host output writer closed")
 }
 
 #[cfg(test)]
