@@ -8,6 +8,8 @@
 // Imports
 //==================================================================================================
 
+#[cfg(target_os = "windows")]
+use crate::output::console::AsyncConsoleWriter;
 #[cfg(target_os = "linux")]
 use crate::vmm::kvm::pmio::{
     PmioAccess,
@@ -15,8 +17,6 @@ use crate::vmm::kvm::pmio::{
 };
 #[cfg(target_os = "linux")]
 use crate::vmm::microvm::kvm::vmem::VirtualMemory;
-#[cfg(target_os = "windows")]
-use crate::vmm::microvm::whp::console::AsyncConsoleWriter;
 #[cfg(target_os = "windows")]
 use crate::vmm::microvm::whp::vcpu::exit::{
     PmioAccess,

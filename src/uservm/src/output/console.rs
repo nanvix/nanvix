@@ -3,7 +3,7 @@
 
 //! # Description
 //!
-//! Decouples guest console output from the WHP partition lock.
+//! Decouples guest console output at the blocking host-write boundary.
 //!
 //! On Windows/WHP the vCPU run loop holds the partition lock across
 //! [`Emulator::handle_pmio_access()`](crate::vmm::emulator::Emulator::handle_pmio_access), which
@@ -21,12 +21,12 @@
 // Imports
 //==================================================================================================
 
+use crate::output::OutputBuffer;
 use ::log::{
     error,
     warn,
 };
 use ::std::{
-    collections::VecDeque,
     io::{
         self,
         Write,
@@ -73,7 +73,7 @@ const DRAIN_JOIN_GRACE: Duration = Duration::from_secs(2);
 ///
 struct State {
     /// Console bytes awaiting write to the underlying sink.
-    data: VecDeque<u8>,
+    data: OutputBuffer,
     /// Total bytes accepted into `data` over the writer's lifetime.
     enqueued: u64,
     /// Total bytes written to (and flushed on) the underlying sink.
@@ -151,7 +151,7 @@ impl AsyncConsoleWriter {
     pub fn new(inner: Box<dyn Write + Send>) -> Self {
         let channel: Arc<Channel> = Arc::new(Channel {
             state: Mutex::new(State {
-                data: VecDeque::new(),
+                data: OutputBuffer::new(BUFFER_CAPACITY_BYTES),
                 enqueued: 0,
                 written: 0,
                 dropped: 0,
@@ -194,10 +194,8 @@ impl Write for AsyncConsoleWriter {
         }
 
         let was_empty: bool = state.data.is_empty();
-        let free: usize = BUFFER_CAPACITY_BYTES.saturating_sub(state.data.len());
-        let take: usize = buf.len().min(free);
+        let take: usize = state.data.append(buf);
         if take > 0 {
-            state.data.extend(&buf[..take]);
             state.enqueued = state.enqueued.saturating_add(take as u64);
         }
         if take < buf.len() {
@@ -313,8 +311,7 @@ fn drain_loop(channel: &Arc<Channel>, mut inner: Box<dyn Write + Send>) {
             channel.drained.notify_all();
             return;
         }
-        scratch.clear();
-        scratch.extend(state.data.drain(..));
+        state.data.drain_into(&mut scratch);
         drop(state);
 
         let count: u64 = scratch.len() as u64;

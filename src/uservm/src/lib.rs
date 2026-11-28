@@ -52,6 +52,7 @@ pub mod elf;
 pub mod guest_profiler;
 pub mod memory_thread;
 pub mod orchestrator;
+pub mod output;
 pub mod pal;
 #[cfg(feature = "profile-time")]
 pub mod perf;
